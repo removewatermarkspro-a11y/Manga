@@ -1,0 +1,49 @@
+@font-face {
+  font-family: 'Luckiest Guy';
+  src: url('/fonts/LuckiestGuy-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-inter: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-luckiest: 'Luckiest Guy', cursive;
+}
+
+body {
+  font-family: var(--font-inter);
+}
+
+@keyframes scrollContinuous {
+  0% {
+    transform: translateX(0);
+  }
+
+  100% {
+    /* Translate by width of 5 boxes + 5 gaps: (384px * 5) + (24px * 5) = 2040px */
+    transform: translateX(-2040px);
+  }
+}
+
+.animate-scroll {
+  animation: scrollContinuous 20s linear infinite;
+  will-change: transform;
+}
+
+@media (max-width: 768px) {
+  .animate-scroll {
+    animation: scrollContinuous 12s linear infinite;
+  }
+}
+
+/* Main Character button - simple yellow border */
+.main-character-glow {
+  background: white !important;
+  border: 3px solid #facc15 !important;
+  box-shadow: 2px 2px 0px 0px rgba(0, 0, 0, 1);
+}

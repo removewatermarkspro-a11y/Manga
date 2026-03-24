@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hero Section Preview - Neo-Brutalist</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+        .dot-pattern {
+            background-image: radial-gradient(circle, #000 1px, transparent 1px);
+            background-size: 24px 24px;
+        }
+        .hard-shadow {
+            box-shadow: 4px 4px 0px 0px rgba(0, 0, 0, 1);
+        }
+        .hard-shadow-lg {
+            box-shadow: 6px 6px 0px 0px rgba(0, 0, 0, 1);
+        }
+        .hard-shadow-xl {
+            box-shadow: 8px 8px 0px 0px rgba(0, 0, 0, 1);
+        }
+        .style-card {
+            transition: all 0.2s ease;
+        }
+        .style-card:hover {
+            transform: scale(1.05) rotate(-2deg);
+            box-shadow: 6px 6px 0px 0px rgba(0, 0, 0, 1);
+        }
+        .style-card.selected {
+            ring: 4px solid #6366f1;
+            transform: scale(1.05);
+        }
+        .btn-hover {
+            transition: all 0.2s ease;
+        }
+        .btn-hover:hover {
+            transform: scale(1.05);
+        }
+        .btn-hover:active {
+            transform: scale(0.95);
+        }
+        .comic-float {
+            animation: float 3s ease-in-out infinite;
+        }
+        @keyframes float {
+            0%, 100% { transform: rotate(2deg) translateY(0px); }
+            50% { transform: rotate(-2deg) translateY(-10px); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="min-h-screen bg-[#f5f5f5] relative overflow-hidden">
+        <!-- Dot Grid Pattern Background -->
+        <div class="absolute inset-0 opacity-30 dot-pattern"></div>
+
+        <!-- Header -->
+        <header class="relative z-10 px-6 py-6 flex items-center justify-between max-w-7xl mx-auto">
+            <div class="flex items-center gap-3">
+                <div class="text-5xl font-black text-[#3b82f6] transform -rotate-6" style="text-shadow: 3px 3px 0px rgba(0,0,0,1);">
+                    KAI
+                </div>
+            </div>
+            <button class="px-6 py-3 bg-[#4ade80] text-black font-bold text-lg border-[3px] border-black hard-shadow btn-hover">
+                Get Started
+            </button>
+        </header>
+
+        <!-- Main Hero Section -->
+        <main class="relative z-10 px-6 py-12 max-w-7xl mx-auto">
+            <div class="grid lg:grid-cols-2 gap-12 items-center">
+                <!-- Left Column - Content & Form -->
+                <div class="space-y-8">
+                    <!-- Title -->
+                    <h1 class="text-6xl lg:text-7xl font-black leading-tight tracking-tight">
+                        YOU ARE FREE LIKE A BIRD
+                    </h1>
+
+                    <!-- Description -->
+                    <p class="text-lg text-gray-700 leading-relaxed max-w-xl">
+                        You imagine, we bring it to life. Choose your style now, tell us what you want, and let your ideas come to life. Whether it's things you've kept secret from everyone, or a story about your first meeting with your sweetheart.
+                    </p>
+
+                    <!-- Upload Section -->
+                    <div class="space-y-3">
+                        <label class="text-xl font-bold text-[#ff0080]">Add a Photo</label>
+                        <div class="relative">
+                            <input
+                                type="text"
+                                readonly
+                                value="Upload your photo"
+                                class="w-full px-5 py-4 bg-white border-[3px] border-black text-gray-500 font-medium text-lg pr-32"
+                                placeholder="Upload your photo"
+                            />
+                            <label class="absolute right-1 top-1 bottom-1">
+                                <div class="h-full px-6 bg-[#facc15] border-[3px] border-black hard-shadow btn-hover flex items-center justify-center cursor-pointer font-bold text-lg">
+                                    Browse
+                                </div>
+                                <input type="file" class="hidden" accept="image/*" id="fileInput" onchange="updateFileName(this)">
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Style Selection -->
+                    <div class="space-y-4">
+                        <label class="text-xl font-bold text-[#ff0080]">Select a Style</label>
+                        <div class="grid grid-cols-3 gap-4">
+                            <button onclick="selectStyle(this, 'comic')" class="style-card relative p-4 bg-white border-[3px] border-black hard-shadow">
+                                <div class="text-4xl mb-2">🎨</div>
+                                <div class="font-bold text-lg">Comic</div>
+                            </button>
+                            <button onclick="selectStyle(this, 'manga')" class="style-card relative p-4 bg-white border-[3px] border-black hard-shadow">
+                                <div class="text-4xl mb-2">⚡</div>
+                                <div class="font-bold text-lg">Manga</div>
+                            </button>
+                            <button onclick="selectStyle(this, 'manhwa')" class="style-card relative p-4 bg-[#4ade80] border-[3px] border-black hard-shadow">
+                                <div class="text-4xl mb-2">✨</div>
+                                <div class="font-bold text-lg">Manhwa</div>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Generate Button -->
+                    <button class="w-full py-5 bg-[#6366f1] text-white font-black text-2xl border-[3px] border-black hard-shadow-lg btn-hover flex items-center justify-center gap-3">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"></path>
+                        </svg>
+                        Generate
+                    </button>
+                </div>
+
+                <!-- Right Column - Comic Strip Image -->
+                <div class="relative">
+                    <div class="comic-float relative bg-white border-[4px] border-black hard-shadow-xl p-4">
+                        <!-- Comic Strip Grid -->
+                        <div class="grid grid-rows-4 gap-3">
+                            <!-- Row 1 - Single large image -->
+                            <div class="relative h-48 bg-gradient-to-br from-orange-200 to-orange-300 border-[3px] border-black overflow-hidden">
+                                <div class="absolute inset-0 flex items-center justify-center text-6xl">
+                                    🎬
+                                </div>
+                            </div>
+
+                            <!-- Row 2 - Three panels -->
+                            <div class="grid grid-cols-3 gap-3">
+                                <div class="relative h-32 bg-gradient-to-br from-blue-200 to-blue-300 border-[3px] border-black overflow-hidden">
+                                    <div class="absolute inset-0 flex items-center justify-center text-3xl">
+                                        🚴
+                                    </div>
+                                </div>
+                                <div class="relative h-32 bg-gradient-to-br from-blue-200 to-blue-300 border-[3px] border-black overflow-hidden">
+                                    <div class="absolute inset-0 flex items-center justify-center text-3xl">
+                                        💑
+                                    </div>
+                                </div>
+                                <div class="relative h-32 bg-gradient-to-br from-blue-200 to-blue-300 border-[3px] border-black overflow-hidden">
+                                    <div class="absolute inset-0 flex items-center justify-center text-3xl">
+                                        🎭
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Row 3 - Single image -->
+                            <div class="relative h-40 bg-gradient-to-br from-purple-200 to-purple-300 border-[3px] border-black overflow-hidden">
+                                <div class="absolute inset-0 flex items-center justify-center text-5xl">
+                                    🎆
+                                </div>
+                            </div>
+
+                            <!-- Row 4 - Single image -->
+                            <div class="relative h-40 bg-gradient-to-br from-pink-200 to-pink-300 border-[3px] border-black overflow-hidden">
+                                <div class="absolute inset-0 flex items-center justify-center text-5xl">
+                                    🌅
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Progress Indicators -->
+                        <div class="flex items-center justify-center gap-2 mt-4">
+                            <div class="w-3 h-3 border-2 border-black bg-white"></div>
+                            <div class="w-3 h-3 border-2 border-black bg-white"></div>
+                            <div class="w-3 h-3 border-2 border-black bg-white"></div>
+                            <div class="w-3 h-3 border-2 border-black bg-[#4ade80]"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        function selectStyle(element, style) {
+            // Remove selected class from all cards
+            document.querySelectorAll('.style-card').forEach(card => {
+                card.classList.remove('selected');
+                card.style.outline = 'none';
+            });
+            // Add selected class to clicked card
+            element.classList.add('selected');
+            element.style.outline = '4px solid #6366f1';
+            element.style.outlineOffset = '2px';
+        }
+
+        function updateFileName(input) {
+            if (input.files && input.files[0]) {
+                const fileName = input.files[0].name;
+                input.closest('.relative').querySelector('input[type="text"]').value = fileName;
+            }
+        }
+    </script>
+</body>
+</html>
