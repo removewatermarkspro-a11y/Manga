@@ -10,10 +10,10 @@ export default function ResultsPage() {
     const [isAuthPopupOpen, setIsAuthPopupOpen] = useState(false);
     const [availableCredits, setAvailableCredits] = useState(0);
     const [panelImages, setPanelImages] = useState<string[]>([]);
-    const [currentPage, setCurrentPage] = useState(0); // 0 = cover, 1-10 = panels
+    const [currentPage, setCurrentPage] = useState(0);
     const [isBookOpen, setIsBookOpen] = useState(false);
     const [isDownloading, setIsDownloading] = useState(false);
-    const [direction, setDirection] = useState(0); // -1 = prev, 1 = next
+    const [direction, setDirection] = useState(0);
 
     useEffect(() => {
         const storedImages = localStorage.getItem('generatedImages');
@@ -27,8 +27,6 @@ export default function ResultsPage() {
                 console.error("Failed to parse generatedImages from localStorage", e);
             }
         }
-
-        // Trigger book opening animation after a short delay
         setTimeout(() => setIsBookOpen(true), 500);
     }, []);
 
@@ -38,7 +36,7 @@ export default function ResultsPage() {
         window.location.href = '/';
     };
 
-    const totalPages = panelImages.length + 1; // +1 for cover
+    const totalPages = panelImages.length;
 
     const goToPage = (newPage: number) => {
         if (newPage < 0 || newPage >= totalPages) return;
@@ -56,21 +54,12 @@ export default function ResultsPage() {
 
         try {
             const { jsPDF } = await import('jspdf');
-
-            // Create A4 portrait PDF
-            const pdf = new jsPDF({
-                orientation: 'portrait',
-                unit: 'mm',
-                format: 'a4',
-            });
-
+            const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
             const pageWidth = pdf.internal.pageSize.getWidth();
             const pageHeight = pdf.internal.pageSize.getHeight();
 
             for (let i = 0; i < panelImages.length; i++) {
                 if (i > 0) pdf.addPage();
-
-                // Fetch image as blob and convert to base64
                 try {
                     const response = await fetch(panelImages[i]);
                     const blob = await response.blob();
@@ -80,37 +69,29 @@ export default function ResultsPage() {
                         reader.readAsDataURL(blob);
                     });
 
-                    // Calculate dimensions to fit the page with margins
                     const margin = 5;
                     const maxWidth = pageWidth - (margin * 2);
                     const maxHeight = pageHeight - (margin * 2);
-
-                    // Assume 3:4 aspect ratio
                     const imgRatio = 3 / 4;
                     let imgWidth = maxWidth;
                     let imgHeight = imgWidth / imgRatio;
-
                     if (imgHeight > maxHeight) {
                         imgHeight = maxHeight;
                         imgWidth = imgHeight * imgRatio;
                     }
-
                     const x = (pageWidth - imgWidth) / 2;
                     const y = (pageHeight - imgHeight) / 2;
-
                     pdf.addImage(base64, 'JPEG', x, y, imgWidth, imgHeight);
-
-                    // Add page number
                     pdf.setFontSize(10);
                     pdf.setTextColor(150);
-                    pdf.text(`${i + 1} / ${panelImages.length}`, pageWidth / 2, pageHeight - 3, { align: 'center' });
+                    const label = i === 0 ? 'Cover' : `Page ${i} / ${panelImages.length - 1}`;
+                    pdf.text(label, pageWidth / 2, pageHeight - 3, { align: 'center' });
                 } catch (imgError) {
                     console.error(`Failed to add image ${i + 1} to PDF:`, imgError);
                     pdf.setFontSize(16);
-                    pdf.text(`Panel ${i + 1} - Image could not be loaded`, pageWidth / 2, pageHeight / 2, { align: 'center' });
+                    pdf.text(`Page ${i + 1} - Image could not be loaded`, pageWidth / 2, pageHeight / 2, { align: 'center' });
                 }
             }
-
             pdf.save('my-comic-book.pdf');
         } catch (error) {
             console.error('PDF generation error:', error);
@@ -120,22 +101,21 @@ export default function ResultsPage() {
         }
     };
 
-    // Page flip animation variants
     const pageVariants = {
         enter: (direction: number) => ({
-            rotateY: direction > 0 ? 90 : -90,
+            x: direction > 0 ? 300 : -300,
             opacity: 0,
-            scale: 0.95,
+            scale: 0.9,
         }),
         center: {
-            rotateY: 0,
+            x: 0,
             opacity: 1,
             scale: 1,
         },
         exit: (direction: number) => ({
-            rotateY: direction < 0 ? 90 : -90,
+            x: direction < 0 ? 300 : -300,
             opacity: 0,
-            scale: 0.95,
+            scale: 0.9,
         }),
     };
 
@@ -145,9 +125,11 @@ export default function ResultsPage() {
             style={{
                 background: `
                   radial-gradient(circle, rgba(0, 0, 0, 0.11) 1px, transparent 1px),
-                  linear-gradient(to bottom, #1a1a2e 0%, #16213e 50%, #0f3460 100%)
+                  linear-gradient(to bottom, #e4e4e7 0%, #e4e4e7 25%, #d4d4d8 50%, #a1a1aa 100%)
                 `,
                 backgroundSize: '8px 8px, 100% 100%',
+                backgroundPosition: '0 0, 0 0',
+                width: '100%',
             }}
         >
             <Header
@@ -157,7 +139,7 @@ export default function ResultsPage() {
                 availableCredits={availableCredits}
             />
 
-            <main className="flex-1 flex flex-col items-center justify-center px-4 py-4 md:py-6 relative">
+            <main className="flex-1 flex flex-col items-center px-4 py-4 md:py-6 relative">
                 {/* Title */}
                 <motion.div
                     initial={{ opacity: 0, y: -20 }}
@@ -165,37 +147,30 @@ export default function ResultsPage() {
                     transition={{ duration: 0.6 }}
                     className="text-center mb-4 md:mb-6"
                 >
-                    <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full px-4 py-1.5 mb-3">
-                        <BookOpen className="w-4 h-4 text-[#facc15]" />
-                        <span className="text-white/90 text-sm font-bold">Your Comic Book</span>
-                    </div>
-                    <h1 className="text-3xl md:text-4xl font-black text-white font-display uppercase tracking-wider">
-                        Your Creation is <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#facc15] to-[#f59e0b]">Ready!</span>
+                    <span className="inline-block py-1.5 px-3 bg-white border-[2px] border-black rounded-full text-black font-black text-xs uppercase tracking-widest shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] mb-3 transform -rotate-2">
+                        <BookOpen className="w-3.5 h-3.5 inline mr-1.5 -mt-0.5" />
+                        Your Comic Book
+                    </span>
+                    <h1 className="text-3xl md:text-5xl font-black leading-tight tracking-wider font-display uppercase drop-shadow-sm">
+                        Your Creation is <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#6366f1] to-[#8b5cf6]">Ready!</span>
                     </h1>
                 </motion.div>
 
                 {/* Book Container */}
                 <motion.div
-                    initial={{ scale: 0.8, rotateX: 45, opacity: 0 }}
+                    initial={{ scale: 0.7, rotateX: 30, opacity: 0 }}
                     animate={isBookOpen ? { scale: 1, rotateX: 0, opacity: 1 } : {}}
                     transition={{ duration: 0.8, ease: "easeOut" }}
-                    className="relative w-full max-w-lg mx-auto"
+                    className="relative w-full max-w-md mx-auto flex-1 flex flex-col"
                     style={{ perspective: '1200px' }}
                 >
-                    {/* Book Shadow */}
-                    <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-[90%] h-8 bg-black/30 rounded-[50%] blur-xl" />
-
                     {/* Book Frame */}
-                    <div className="relative bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 border-[3px] border-gray-600 rounded-xl shadow-2xl overflow-hidden"
-                        style={{
-                            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1)',
-                        }}
-                    >
-                        {/* Book Spine Effect */}
-                        <div className="absolute left-0 top-0 bottom-0 w-3 bg-gradient-to-r from-gray-700 via-gray-600 to-transparent z-10" />
+                    <div className="relative bg-white border-[4px] border-black rounded-2xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] overflow-hidden flex-1 flex flex-col">
+                        {/* Book Spine */}
+                        <div className="absolute left-0 top-0 bottom-0 w-2 bg-gradient-to-r from-gray-300 to-transparent z-10" />
 
-                        {/* Page Content with Flip Animation */}
-                        <div className="relative aspect-[3/4] overflow-hidden" style={{ perspective: '800px' }}>
+                        {/* Page Content */}
+                        <div className="relative flex-1 overflow-hidden" style={{ perspective: '800px' }}>
                             <AnimatePresence mode="wait" custom={direction}>
                                 <motion.div
                                     key={currentPage}
@@ -205,135 +180,98 @@ export default function ResultsPage() {
                                     animate="center"
                                     exit="exit"
                                     transition={{
-                                        rotateY: { duration: 0.4, ease: "easeInOut" },
-                                        opacity: { duration: 0.3 },
-                                        scale: { duration: 0.3 },
+                                        x: { duration: 0.35, ease: "easeInOut" },
+                                        opacity: { duration: 0.25 },
+                                        scale: { duration: 0.25 },
                                     }}
-                                    className="absolute inset-0"
-                                    style={{ transformStyle: 'preserve-3d', backfaceVisibility: 'hidden' }}
+                                    className="absolute inset-0 flex items-center justify-center bg-gray-50"
                                 >
-                                    {currentPage === 0 ? (
-                                        /* Cover Page */
-                                        <div className="w-full h-full bg-gradient-to-br from-indigo-900 via-purple-900 to-indigo-950 flex flex-col items-center justify-center p-8 relative overflow-hidden">
-                                            {/* Decorative elements */}
-                                            <div className="absolute inset-0 opacity-10">
-                                                <div className="absolute top-0 left-0 w-full h-full" style={{ backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 35px, rgba(255,255,255,0.03) 35px, rgba(255,255,255,0.03) 70px)' }} />
-                                            </div>
-                                            <div className="absolute top-4 left-4 right-4 bottom-4 border-2 border-white/10 rounded-lg" />
-
-                                            <motion.div
-                                                initial={{ scale: 0.8, opacity: 0 }}
-                                                animate={{ scale: 1, opacity: 1 }}
-                                                transition={{ delay: 0.3, duration: 0.5 }}
-                                                className="text-center z-10"
-                                            >
-                                                <div className="text-6xl mb-4">📖</div>
-                                                <h2 className="text-3xl md:text-4xl font-black text-white mb-3 font-display uppercase tracking-wider">
-                                                    My Comic
-                                                </h2>
-                                                <div className="w-16 h-1 bg-gradient-to-r from-[#facc15] to-[#f59e0b] mx-auto mb-3 rounded-full" />
-                                                <p className="text-white/60 text-sm font-bold">
-                                                    AI Generated · {panelImages.length} Pages
-                                                </p>
-                                                <motion.p
-                                                    animate={{ opacity: [0.5, 1, 0.5] }}
-                                                    transition={{ duration: 2, repeat: Infinity }}
-                                                    className="text-white/40 text-xs mt-6 font-semibold"
-                                                >
-                                                    Tap the arrow to start reading →
-                                                </motion.p>
-                                            </motion.div>
-                                        </div>
+                                    {panelImages[currentPage] ? (
+                                        <img
+                                            src={panelImages[currentPage]}
+                                            alt={currentPage === 0 ? 'Cover' : `Page ${currentPage}`}
+                                            className="w-full h-full object-contain"
+                                        />
                                     ) : (
-                                        /* Comic Panel Page */
-                                        <div className="w-full h-full bg-white relative">
-                                            {panelImages[currentPage - 1] ? (
-                                                <img
-                                                    src={panelImages[currentPage - 1]}
-                                                    alt={`Page ${currentPage}`}
-                                                    className="w-full h-full object-contain bg-gray-50"
-                                                />
-                                            ) : (
-                                                <div className="w-full h-full flex items-center justify-center bg-gray-100 text-gray-400 font-bold">
-                                                    Image not available
-                                                </div>
-                                            )}
-                                            {/* Page number */}
-                                            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-black/70 text-white text-xs font-bold px-3 py-1 rounded-full backdrop-blur-sm">
-                                                {currentPage} / {panelImages.length}
-                                            </div>
+                                        <div className="w-full h-full flex items-center justify-center text-gray-400 font-bold text-lg">
+                                            Loading...
                                         </div>
                                     )}
                                 </motion.div>
                             </AnimatePresence>
                         </div>
+
+                        {/* Page indicator bar */}
+                        <div className="relative z-20 bg-white border-t-[3px] border-black px-4 py-2.5 flex items-center justify-between shrink-0">
+                            <span className="text-xs font-black text-gray-500 uppercase">
+                                {currentPage === 0 ? 'Cover' : `Page ${currentPage} / ${totalPages - 1}`}
+                            </span>
+                            <div className="flex items-center gap-1">
+                                {Array.from({ length: totalPages }).map((_, i) => (
+                                    <button
+                                        key={i}
+                                        onClick={() => goToPage(i)}
+                                        className={`transition-all duration-300 rounded-full ${
+                                            i === currentPage
+                                                ? 'w-5 h-2 bg-[#6366f1]'
+                                                : 'w-2 h-2 bg-gray-300 hover:bg-gray-400'
+                                        }`}
+                                    />
+                                ))}
+                            </div>
+                        </div>
                     </div>
                 </motion.div>
 
-                {/* Navigation Controls */}
+                {/* Navigation + Actions */}
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.8 }}
-                    className="flex items-center gap-4 mt-5"
+                    className="flex items-center gap-3 mt-5 mb-4"
                 >
-                    <button
-                        onClick={prevPage}
-                        disabled={currentPage === 0}
-                        className="w-12 h-12 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/20 transition-all active:scale-90"
-                    >
-                        <ChevronLeft className="w-6 h-6" />
-                    </button>
-
-                    {/* Page Dots */}
-                    <div className="flex items-center gap-1.5">
-                        {Array.from({ length: totalPages }).map((_, i) => (
-                            <button
-                                key={i}
-                                onClick={() => goToPage(i)}
-                                className={`transition-all duration-300 rounded-full ${
-                                    i === currentPage
-                                        ? 'w-6 h-2.5 bg-[#facc15]'
-                                        : 'w-2.5 h-2.5 bg-white/30 hover:bg-white/50'
-                                }`}
-                            />
-                        ))}
-                    </div>
-
-                    <button
-                        onClick={nextPage}
-                        disabled={currentPage >= totalPages - 1}
-                        className="w-12 h-12 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/20 transition-all active:scale-90"
-                    >
-                        <ChevronRight className="w-6 h-6" />
-                    </button>
-                </motion.div>
-
-                {/* Action Buttons */}
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 1 }}
-                    className="flex items-center gap-3 mt-5"
-                >
+                    {/* Prev Button */}
                     <motion.button
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
-                        className="bg-white/10 backdrop-blur-sm border border-white/20 text-white px-5 py-3 rounded-xl font-black text-sm flex items-center gap-2 hover:bg-white/20 transition-all"
+                        onClick={prevPage}
+                        disabled={currentPage === 0}
+                        className="bg-white border-[3px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] w-12 h-12 rounded-xl font-black flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 transition-colors"
                     >
-                        <Share2 className="w-4 h-4" />
-                        Share
+                        <ChevronLeft className="w-6 h-6" />
                     </motion.button>
 
+                    {/* Share Button */}
+                    <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        className="bg-white border-[3px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] px-5 py-3 rounded-xl font-black text-sm flex items-center gap-2 hover:bg-gray-100 transition-colors"
+                    >
+                        <Share2 className="w-4 h-4" />
+                        <span className="hidden md:inline">Share</span>
+                    </motion.button>
+
+                    {/* Download PDF Button */}
                     <motion.button
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
                         onClick={handleDownload}
                         disabled={isDownloading || panelImages.length === 0}
-                        className="bg-gradient-to-r from-[#facc15] to-[#f59e0b] text-black px-6 py-3 rounded-xl font-black text-sm flex items-center gap-2 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,0.3)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,0.3)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="bg-[#facc15] text-black border-[3px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] px-6 py-3 rounded-xl font-black text-sm flex items-center gap-2 hover:bg-[#ffe033] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <Download className="w-4 h-4" />
-                        {isDownloading ? 'Generating PDF...' : 'Download PDF'}
+                        {isDownloading ? 'Generating...' : 'Download PDF'}
+                    </motion.button>
+
+                    {/* Next Button */}
+                    <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={nextPage}
+                        disabled={currentPage >= totalPages - 1}
+                        className="bg-white border-[3px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] w-12 h-12 rounded-xl font-black flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 transition-colors"
+                    >
+                        <ChevronRight className="w-6 h-6" />
                     </motion.button>
                 </motion.div>
             </main>
