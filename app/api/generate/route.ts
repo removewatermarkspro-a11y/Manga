@@ -2,25 +2,12 @@ import { NextResponse } from 'next/server';
 import Replicate from 'replicate';
 
 // Initialize Replicate client
-// It will automatically use the REPLICATE_API_TOKEN environment variable if set,
-// or we can pass it directly since we have the key.
+// IMPORTANT: useFileOutput: false ensures we get plain URL strings back,
+// not FileOutput objects that the frontend can't use.
 const replicate = new Replicate({
     auth: process.env.REPLICATE_API_TOKEN || '',
+    useFileOutput: false,
 });
-
-// A narrative arc helper to give each panel a specific narrative beat.
-const narrativeBeats = [
-    "The beginning: Establishing shot, setting the scene.",
-    "The inciting incident: A sudden event or realization occurs.",
-    "Rising action: The character takes their first steps or reacts to the situation.",
-    "Complication: An obstacle appears or tension builds.",
-    "The midpoint: A significant shift or discovery in the situation.",
-    "Escalation: Tensions rise as the character faces mounting challenges.",
-    "The crisis: The character struggles or faces their biggest challenge yet.",
-    "The climax: The most intense moment of action, emotion, or confrontation.",
-    "Falling action: The immediate aftermath of the climax, catching their breath.",
-    "Resolution: The final outcome, showing the result of their journey."
-];
 
 export async function POST(req: Request) {
     try {
@@ -36,56 +23,140 @@ export async function POST(req: Request) {
 
         console.log(`Starting generation for 10 panels. Style: ${style}`);
 
+        // ========================================================
+        // STEP 1: Generate a coherent 10-panel story script via LLaMA
+        // ========================================================
+        console.log('Step 1: Generating story script with LLaMA...');
+
         // Define stylistic keywords based on user selection
         let styleKeywords = '';
+        let styleInstruction = '';
         if (style === 'manga') {
-            styleKeywords = 'black and white manga style, Japanese comic book illustration, dynamic ink lines, screentones';
+            styleKeywords = 'black and white manga style, Japanese comic book illustration, dynamic ink lines, screentones, high contrast';
+            styleInstruction = 'manga (Japanese black and white comic)';
         } else if (style === 'manhwa') {
-            styleKeywords = 'full color Korean webtoon manhwa style, polished digital painting, vertical scrolling comic art';
+            styleKeywords = 'full color Korean webtoon manhwa style, polished digital painting, vertical scrolling comic art, vibrant colors';
+            styleInstruction = 'manhwa (Korean full-color webtoon)';
         } else if (style === 'comic') {
-            styleKeywords = 'American comic book style, bold outlines, vibrant colors, dynamic superhero style illustration';
+            styleKeywords = 'American comic book style, bold outlines, vibrant colors, dynamic superhero style illustration, halftone dots';
+            styleInstruction = 'comic (American-style comic book)';
         }
 
-        // Generate 10 panels
-        // We will execute a few at a time to avoid heavy rate limiting
+        const llamaSystemPrompt = `You are a professional comic book scriptwriter. You must output ONLY a valid JSON array of exactly 10 strings, with no other text, no markdown, no explanation. Each string is a detailed visual description of one comic panel. The descriptions must form a coherent narrative arc with consistent characters, settings, and visual details throughout all 10 panels. Every panel description must mention the main character's appearance consistently so the image generator can maintain visual consistency.`;
+
+        const llamaUserPrompt = `Write a 10-panel ${styleInstruction} story based on this concept: "${storyText}"
+
+Rules:
+- Output ONLY a JSON array of 10 strings. No other text.
+- Each string must be a rich, detailed visual scene description (2-3 sentences).
+- Describe the character's physical appearance consistently in every panel.
+- Include specific details: poses, expressions, backgrounds, lighting, camera angles.
+- The panels must follow a clear narrative arc: Setup → Conflict → Climax → Resolution.
+- Write all descriptions in English.
+
+Example format:
+["Panel 1 description...", "Panel 2 description...", ..., "Panel 10 description..."]`;
+
+        const llamaOutput = await replicate.run(
+            "meta/meta-llama-3-8b-instruct",
+            {
+                input: {
+                    prompt: llamaUserPrompt,
+                    system_prompt: llamaSystemPrompt,
+                    max_tokens: 2048,
+                    temperature: 0.7,
+                    top_p: 0.9,
+                }
+            }
+        );
+
+        // LLaMA returns an array of string chunks, join them
+        let llamaText = '';
+        if (Array.isArray(llamaOutput)) {
+            llamaText = llamaOutput.join('');
+        } else {
+            llamaText = String(llamaOutput);
+        }
+
+        console.log('LLaMA raw output:', llamaText.substring(0, 500));
+
+        // Parse the JSON array from LLaMA's output
+        let panelDescriptions: string[] = [];
+        try {
+            // Try to extract JSON array from the response (LLaMA might add extra text)
+            const jsonMatch = llamaText.match(/\[[\s\S]*\]/);
+            if (jsonMatch) {
+                panelDescriptions = JSON.parse(jsonMatch[0]);
+            }
+        } catch (parseError) {
+            console.error('Failed to parse LLaMA output as JSON, using fallback:', parseError);
+        }
+
+        // Fallback: if parsing failed, use generic narrative beats
+        if (!Array.isArray(panelDescriptions) || panelDescriptions.length < 10) {
+            console.warn('LLaMA parsing failed or returned < 10 panels. Using fallback narrative beats.');
+            panelDescriptions = [
+                `Establishing shot: The main character stands in the setting of ${storyText}. Wide angle view showing the environment.`,
+                `The inciting incident: Something unexpected happens that disrupts the character's normal life. Close-up on their surprised expression.`,
+                `Rising action: The character begins to react and take action. Dynamic pose showing determination.`,
+                `Complication: An obstacle or antagonist appears, creating tension. Dramatic lighting and shadows.`,
+                `The midpoint: A significant discovery or turning point changes everything. Medium shot of the character processing new information.`,
+                `Escalation: The stakes get higher. Action scene with dynamic movement and energy.`,
+                `The crisis: The character faces their biggest challenge yet. Intense close-up showing struggle and emotion.`,
+                `The climax: The most intense moment of confrontation or action. Full-page spread feeling with maximum dramatic impact.`,
+                `Falling action: The immediate aftermath. The character catches their breath. Quieter, reflective mood.`,
+                `Resolution: The final outcome. The character has changed. Peaceful wide shot showing the new status quo.`
+            ];
+        }
+
+        // Ensure exactly 10 descriptions
+        panelDescriptions = panelDescriptions.slice(0, 10);
+        while (panelDescriptions.length < 10) {
+            panelDescriptions.push(`A continuation scene of the story: ${storyText}. The character is shown in a new pose.`);
+        }
+
+        console.log('Step 1 complete! Generated', panelDescriptions.length, 'panel descriptions.');
+
+        // ========================================================
+        // STEP 2: Generate images one by one with nano-banana
+        // ========================================================
+        console.log('Step 2: Generating images with nano-banana...');
+
         const generatedImages: string[] = [];
 
-        // For V1, we will do Promise.all since google/nano-banana-2 is very fast.
-        // It might be safer to do them sequentially or in batches if Replicate complains about concurrency limits.
-        // generate one by one to avoid Replicate's "High demand / concurrency" limits.
-        const batchSize = 1;
-        for (let i = 0; i < 10; i += batchSize) {
-            const batchPromises = [];
-            for (let j = 0; j < batchSize && (i + j) < 10; j++) {
-                const panelIndex = i + j;
-                const narrativeBeat = narrativeBeats[panelIndex];
-                
-                // Construct the full prompt
-                const fullPrompt = `${styleKeywords}. A single comic panel. ${narrativeBeat} The main character is visually consistent with the input image. The story setting: ${storyText}.`;
+        for (let i = 0; i < 10; i++) {
+            const panelDesc = panelDescriptions[i];
 
-                const promise = replicate.run(
-                    "google/nano-banana",
-                    {
-                        input: {
-                            prompt: fullPrompt,
-                            image_input: [characterImage], // use the uploaded character base64
-                            aspect_ratio: "3:4", // Good typical portrait aspect ratio for comic panels
-                            output_format: "jpg"
-                        }
+            // Construct the full prompt combining style + LLaMA description
+            const fullPrompt = `${styleKeywords}. A single comic panel illustration. ${panelDesc}. The main character is visually consistent with the provided reference image.`;
+
+            console.log(`Generating panel ${i + 1}/10...`);
+
+            const output = await replicate.run(
+                "google/nano-banana",
+                {
+                    input: {
+                        prompt: fullPrompt,
+                        image_input: [characterImage],
+                        aspect_ratio: "3:4",
+                        output_format: "jpg"
                     }
-                ).then(output => {
-                    // Replicate usually returns an array of URIs for image models, or a single URI string depending on the exact schema
-                    // The nano-banana-2 schema indicates it returns a single string URI:
-                    // "https://replicate.delivery/..."
-                    return output as unknown as string;
-                });
-                
-                batchPromises.push(promise);
+                }
+            );
+
+            // With useFileOutput: false, output should be a plain URL string
+            let imageUrl = '';
+            if (typeof output === 'string') {
+                imageUrl = output;
+            } else if (output && typeof output === 'object' && 'url' in output) {
+                // Fallback for FileOutput objects
+                imageUrl = String((output as any).url());
+            } else {
+                imageUrl = String(output);
             }
 
-            console.log(`Waiting for batch ${i / batchSize + 1}...`);
-            const batchResults = await Promise.all(batchPromises);
-            generatedImages.push(...batchResults);
+            console.log(`Panel ${i + 1} generated: ${imageUrl.substring(0, 80)}...`);
+            generatedImages.push(imageUrl);
         }
 
         console.log('Generation complete!', generatedImages.length, 'images generated.');
@@ -93,9 +164,9 @@ export async function POST(req: Request) {
         return NextResponse.json({ images: generatedImages });
     } catch (error: any) {
         console.error('Error generating images:', error);
-        
+
         let errorMessage = 'Failed to generate images';
-        
+
         if (error.response?.data) {
             errorMessage = JSON.stringify(error.response.data);
         } else if (error.message) {
