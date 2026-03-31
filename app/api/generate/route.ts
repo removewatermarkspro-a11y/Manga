@@ -16,6 +16,11 @@ interface CharacterData {
     image: string;
 }
 
+// Increase Vercel serverless function timeout (300s on Pro, 60s on Hobby)
+// and body size limit for large base64 character images
+export const maxDuration = 300;
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: Request) {
     try {
         const body = await req.json();
