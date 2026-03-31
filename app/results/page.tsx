@@ -1,34 +1,19 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import Image from 'next/image';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Pencil, Download, Share2, X, Sparkles } from 'lucide-react';
-import Header from '../../components/Header'; // Assuming components are two levels up from app/results/page.tsx
+import { Download, Share2, ChevronLeft, ChevronRight, BookOpen } from 'lucide-react';
+import Header from '../../components/Header';
 
 export default function ResultsPage() {
-    const [isLoggedIn, setIsLoggedIn] = useState(true); // Assuming they just paid and are logged in
+    const [isLoggedIn, setIsLoggedIn] = useState(true);
     const [isAuthPopupOpen, setIsAuthPopupOpen] = useState(false);
-    const [availableCredits, setAvailableCredits] = useState(0); // Will be populated from API
-
-    // Modal state
-    const [isModifyModalOpen, setIsModifyModalOpen] = useState(false);
-    const [selectedPanelIndex, setSelectedPanelIndex] = useState<number | null>(null);
-    const [modifyPrompt, setModifyPrompt] = useState("");
-
-    // Panels images state
-    const [panelImages, setPanelImages] = useState<string[]>([
-        '/images/form-example-1.jpg',
-        '/images/form-example-2.jpg',
-        '/images/form-example-3.jpg',
-        '/images/form-example-4.jpg',
-        '/images/form-example-1.jpg',
-        '/images/form-example-2.jpg',
-        '/images/form-example-3.jpg',
-        '/images/form-example-4.jpg',
-        '/images/form-example-1.jpg',
-        '/images/form-example-2.jpg',
-    ]);
+    const [availableCredits, setAvailableCredits] = useState(0);
+    const [panelImages, setPanelImages] = useState<string[]>([]);
+    const [currentPage, setCurrentPage] = useState(0); // 0 = cover, 1-10 = panels
+    const [isBookOpen, setIsBookOpen] = useState(false);
+    const [isDownloading, setIsDownloading] = useState(false);
+    const [direction, setDirection] = useState(0); // -1 = prev, 1 = next
 
     useEffect(() => {
         const storedImages = localStorage.getItem('generatedImages');
@@ -42,6 +27,9 @@ export default function ResultsPage() {
                 console.error("Failed to parse generatedImages from localStorage", e);
             }
         }
+
+        // Trigger book opening animation after a short delay
+        setTimeout(() => setIsBookOpen(true), 500);
     }, []);
 
     const handleLogout = () => {
@@ -50,18 +38,105 @@ export default function ResultsPage() {
         window.location.href = '/';
     };
 
-    const handleModifyClick = (index: number) => {
-        setSelectedPanelIndex(index);
-        setModifyPrompt(""); // Reset prompt
-        setIsModifyModalOpen(true);
+    const totalPages = panelImages.length + 1; // +1 for cover
+
+    const goToPage = (newPage: number) => {
+        if (newPage < 0 || newPage >= totalPages) return;
+        setDirection(newPage > currentPage ? 1 : -1);
+        setCurrentPage(newPage);
     };
 
-    const handleConfirmModify = () => {
-        if (!modifyPrompt.trim()) return;
+    const nextPage = () => goToPage(currentPage + 1);
+    const prevPage = () => goToPage(currentPage - 1);
 
-        // TODO: Connect to API to regenerate this panel
-        alert(`Generating new image for panel ${selectedPanelIndex !== null ? selectedPanelIndex + 1 : ''} with prompt: "${modifyPrompt}"`);
-        setIsModifyModalOpen(false);
+    // Download as PDF
+    const handleDownload = async () => {
+        if (panelImages.length === 0) return;
+        setIsDownloading(true);
+
+        try {
+            const { jsPDF } = await import('jspdf');
+
+            // Create A4 portrait PDF
+            const pdf = new jsPDF({
+                orientation: 'portrait',
+                unit: 'mm',
+                format: 'a4',
+            });
+
+            const pageWidth = pdf.internal.pageSize.getWidth();
+            const pageHeight = pdf.internal.pageSize.getHeight();
+
+            for (let i = 0; i < panelImages.length; i++) {
+                if (i > 0) pdf.addPage();
+
+                // Fetch image as blob and convert to base64
+                try {
+                    const response = await fetch(panelImages[i]);
+                    const blob = await response.blob();
+                    const base64 = await new Promise<string>((resolve) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve(reader.result as string);
+                        reader.readAsDataURL(blob);
+                    });
+
+                    // Calculate dimensions to fit the page with margins
+                    const margin = 5;
+                    const maxWidth = pageWidth - (margin * 2);
+                    const maxHeight = pageHeight - (margin * 2);
+
+                    // Assume 3:4 aspect ratio
+                    const imgRatio = 3 / 4;
+                    let imgWidth = maxWidth;
+                    let imgHeight = imgWidth / imgRatio;
+
+                    if (imgHeight > maxHeight) {
+                        imgHeight = maxHeight;
+                        imgWidth = imgHeight * imgRatio;
+                    }
+
+                    const x = (pageWidth - imgWidth) / 2;
+                    const y = (pageHeight - imgHeight) / 2;
+
+                    pdf.addImage(base64, 'JPEG', x, y, imgWidth, imgHeight);
+
+                    // Add page number
+                    pdf.setFontSize(10);
+                    pdf.setTextColor(150);
+                    pdf.text(`${i + 1} / ${panelImages.length}`, pageWidth / 2, pageHeight - 3, { align: 'center' });
+                } catch (imgError) {
+                    console.error(`Failed to add image ${i + 1} to PDF:`, imgError);
+                    pdf.setFontSize(16);
+                    pdf.text(`Panel ${i + 1} - Image could not be loaded`, pageWidth / 2, pageHeight / 2, { align: 'center' });
+                }
+            }
+
+            pdf.save('my-comic-book.pdf');
+        } catch (error) {
+            console.error('PDF generation error:', error);
+            alert('Failed to generate PDF. Please try again.');
+        } finally {
+            setIsDownloading(false);
+        }
+    };
+
+    // Page flip animation variants
+    const pageVariants = {
+        enter: (direction: number) => ({
+            rotateY: direction > 0 ? 90 : -90,
+            opacity: 0,
+            scale: 0.95,
+        }),
+        center: {
+            rotateY: 0,
+            opacity: 1,
+            scale: 1,
+        },
+        exit: (direction: number) => ({
+            rotateY: direction < 0 ? 90 : -90,
+            opacity: 0,
+            scale: 0.95,
+        }),
     };
 
     return (
@@ -70,11 +145,9 @@ export default function ResultsPage() {
             style={{
                 background: `
                   radial-gradient(circle, rgba(0, 0, 0, 0.11) 1px, transparent 1px),
-                  linear-gradient(to bottom, #e4e4e7 0%, #e4e4e7 25%, #d4d4d8 50%, #a1a1aa 100%)
+                  linear-gradient(to bottom, #1a1a2e 0%, #16213e 50%, #0f3460 100%)
                 `,
                 backgroundSize: '8px 8px, 100% 100%',
-                backgroundPosition: '0 0, 0 0',
-                width: '100%',
             }}
         >
             <Header
@@ -83,177 +156,187 @@ export default function ResultsPage() {
                 onLogout={handleLogout}
                 availableCredits={availableCredits}
             />
-            <main className="flex-1 max-w-7xl mx-auto px-4 py-8 w-full flex flex-col h-[calc(100vh-100px)]">
-                {/* Stylized Title Section */}
-                <div className="text-center mb-10 w-full flex flex-col items-center">
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.5 }}
-                    >
-                        <span className="inline-block py-1.5 px-3 bg-white border-[2px] border-black rounded-full text-black font-black text-xs uppercase tracking-widest shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] mb-4 transform -rotate-2">
-                            Download Your Creation
-                        </span>
-                        <h1 className="text-4xl md:text-5xl lg:text-6xl font-black leading-tight tracking-wider font-display uppercase drop-shadow-sm mb-4">
-                            Your Creation is <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#6366f1] to-[#8b5cf6]">READY!</span>
-                        </h1>
-                        <p className="text-lg md:text-xl font-bold text-gray-700">
-                            Scroll down to read your generated story. Don't like a panel? Modify it!
-                        </p>
-                    </motion.div>
-                </div>
 
-                {/* Big Stylish Box containing the images */}
-                <div className="relative bg-white border-[4px] border-black rounded-3xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex-1 flex flex-col overflow-hidden max-w-5xl mx-auto w-full">
-
-                    {/* Comic Rays Background inside the box */}
-                    <div className="absolute inset-0 pointer-events-none opacity-[0.05]">
-                        <Image
-                            src="/images/comic-rays-bg.jpg"
-                            alt=""
-                            fill
-                            className="object-cover"
-                        />
+            <main className="flex-1 flex flex-col items-center justify-center px-4 py-4 md:py-6 relative">
+                {/* Title */}
+                <motion.div
+                    initial={{ opacity: 0, y: -20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.6 }}
+                    className="text-center mb-4 md:mb-6"
+                >
+                    <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full px-4 py-1.5 mb-3">
+                        <BookOpen className="w-4 h-4 text-[#facc15]" />
+                        <span className="text-white/90 text-sm font-bold">Your Comic Book</span>
                     </div>
+                    <h1 className="text-3xl md:text-4xl font-black text-white font-display uppercase tracking-wider">
+                        Your Creation is <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#facc15] to-[#f59e0b]">Ready!</span>
+                    </h1>
+                </motion.div>
 
-                    {/* Scrollable Images Container */}
-                    <div className="relative z-10 flex-1 overflow-y-auto p-4 md:p-8 flex flex-col gap-6 md:gap-10 scroll-smooth">
-                        {panelImages.map((imgSrc, index) => (
-                            <div key={index} className="relative group w-full bg-gray-100 border-[3px] border-black rounded-xl overflow-hidden flex flex-col cursor-pointer transition-transform hover:-translate-y-1">
+                {/* Book Container */}
+                <motion.div
+                    initial={{ scale: 0.8, rotateX: 45, opacity: 0 }}
+                    animate={isBookOpen ? { scale: 1, rotateX: 0, opacity: 1 } : {}}
+                    transition={{ duration: 0.8, ease: "easeOut" }}
+                    className="relative w-full max-w-lg mx-auto"
+                    style={{ perspective: '1200px' }}
+                >
+                    {/* Book Shadow */}
+                    <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-[90%] h-8 bg-black/30 rounded-[50%] blur-xl" />
 
-                                {/* Image Number Badge */}
-                                <div className="absolute top-4 left-4 z-20 bg-black text-white font-black text-xl px-4 py-1 rounded-full border-[3px] border-white shadow-md">
-                                    {index + 1}
-                                </div>
+                    {/* Book Frame */}
+                    <div className="relative bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 border-[3px] border-gray-600 rounded-xl shadow-2xl overflow-hidden"
+                        style={{
+                            boxShadow: '0 25px 50px -12px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1)',
+                        }}
+                    >
+                        {/* Book Spine Effect */}
+                        <div className="absolute left-0 top-0 bottom-0 w-3 bg-gradient-to-r from-gray-700 via-gray-600 to-transparent z-10" />
 
-                                {/* Modify Button - Appears on Hover on Desktop */}
-                                <div className="absolute top-4 right-4 z-20 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleModifyClick(index);
-                                        }}
-                                        className="bg-[#facc15] text-black border-[3px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] px-4 py-2 font-black text-sm uppercase flex items-center gap-2 rounded-xl transition-all hover:bg-[#ffe033] hover:scale-105 active:scale-95"
-                                    >
-                                        <Pencil className="w-4 h-4" />
-                                        Modify panel
-                                    </button>
-                                </div>
+                        {/* Page Content with Flip Animation */}
+                        <div className="relative aspect-[3/4] overflow-hidden" style={{ perspective: '800px' }}>
+                            <AnimatePresence mode="wait" custom={direction}>
+                                <motion.div
+                                    key={currentPage}
+                                    custom={direction}
+                                    variants={pageVariants}
+                                    initial="enter"
+                                    animate="center"
+                                    exit="exit"
+                                    transition={{
+                                        rotateY: { duration: 0.4, ease: "easeInOut" },
+                                        opacity: { duration: 0.3 },
+                                        scale: { duration: 0.3 },
+                                    }}
+                                    className="absolute inset-0"
+                                    style={{ transformStyle: 'preserve-3d', backfaceVisibility: 'hidden' }}
+                                >
+                                    {currentPage === 0 ? (
+                                        /* Cover Page */
+                                        <div className="w-full h-full bg-gradient-to-br from-indigo-900 via-purple-900 to-indigo-950 flex flex-col items-center justify-center p-8 relative overflow-hidden">
+                                            {/* Decorative elements */}
+                                            <div className="absolute inset-0 opacity-10">
+                                                <div className="absolute top-0 left-0 w-full h-full" style={{ backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 35px, rgba(255,255,255,0.03) 35px, rgba(255,255,255,0.03) 70px)' }} />
+                                            </div>
+                                            <div className="absolute top-4 left-4 right-4 bottom-4 border-2 border-white/10 rounded-lg" />
 
-                                {/* The Comic Image */}
-                                <div className="w-full aspect-[2/3] md:min-h-[600px] flex items-center justify-center bg-gray-200">
-                                    <img
-                                        src={imgSrc}
-                                        alt={`Comic Panel ${index + 1}`}
-                                        className="w-full h-full object-cover md:object-contain"
-                                    />
-                                </div>
-                            </div>
+                                            <motion.div
+                                                initial={{ scale: 0.8, opacity: 0 }}
+                                                animate={{ scale: 1, opacity: 1 }}
+                                                transition={{ delay: 0.3, duration: 0.5 }}
+                                                className="text-center z-10"
+                                            >
+                                                <div className="text-6xl mb-4">📖</div>
+                                                <h2 className="text-3xl md:text-4xl font-black text-white mb-3 font-display uppercase tracking-wider">
+                                                    My Comic
+                                                </h2>
+                                                <div className="w-16 h-1 bg-gradient-to-r from-[#facc15] to-[#f59e0b] mx-auto mb-3 rounded-full" />
+                                                <p className="text-white/60 text-sm font-bold">
+                                                    AI Generated · {panelImages.length} Pages
+                                                </p>
+                                                <motion.p
+                                                    animate={{ opacity: [0.5, 1, 0.5] }}
+                                                    transition={{ duration: 2, repeat: Infinity }}
+                                                    className="text-white/40 text-xs mt-6 font-semibold"
+                                                >
+                                                    Tap the arrow to start reading →
+                                                </motion.p>
+                                            </motion.div>
+                                        </div>
+                                    ) : (
+                                        /* Comic Panel Page */
+                                        <div className="w-full h-full bg-white relative">
+                                            {panelImages[currentPage - 1] ? (
+                                                <img
+                                                    src={panelImages[currentPage - 1]}
+                                                    alt={`Page ${currentPage}`}
+                                                    className="w-full h-full object-contain bg-gray-50"
+                                                />
+                                            ) : (
+                                                <div className="w-full h-full flex items-center justify-center bg-gray-100 text-gray-400 font-bold">
+                                                    Image not available
+                                                </div>
+                                            )}
+                                            {/* Page number */}
+                                            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-black/70 text-white text-xs font-bold px-3 py-1 rounded-full backdrop-blur-sm">
+                                                {currentPage} / {panelImages.length}
+                                            </div>
+                                        </div>
+                                    )}
+                                </motion.div>
+                            </AnimatePresence>
+                        </div>
+                    </div>
+                </motion.div>
+
+                {/* Navigation Controls */}
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.8 }}
+                    className="flex items-center gap-4 mt-5"
+                >
+                    <button
+                        onClick={prevPage}
+                        disabled={currentPage === 0}
+                        className="w-12 h-12 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/20 transition-all active:scale-90"
+                    >
+                        <ChevronLeft className="w-6 h-6" />
+                    </button>
+
+                    {/* Page Dots */}
+                    <div className="flex items-center gap-1.5">
+                        {Array.from({ length: totalPages }).map((_, i) => (
+                            <button
+                                key={i}
+                                onClick={() => goToPage(i)}
+                                className={`transition-all duration-300 rounded-full ${
+                                    i === currentPage
+                                        ? 'w-6 h-2.5 bg-[#facc15]'
+                                        : 'w-2.5 h-2.5 bg-white/30 hover:bg-white/50'
+                                }`}
+                            />
                         ))}
                     </div>
 
-                    {/* Bottom Actions Bar */}
-                    <div className="relative z-20 bg-white border-t-[4px] border-black p-4 flex justify-between items-center shrink-0">
-                        <motion.button
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                            className="bg-white border-[3px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] px-4 py-3 md:px-6 rounded-xl font-black text-sm md:text-base flex items-center gap-2 hover:bg-gray-100 transition-colors"
-                        >
-                            <Share2 className="w-5 h-5" />
-                            <span className="hidden md:inline">Share</span>
-                        </motion.button>
+                    <button
+                        onClick={nextPage}
+                        disabled={currentPage >= totalPages - 1}
+                        className="w-12 h-12 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center text-white disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/20 transition-all active:scale-90"
+                    >
+                        <ChevronRight className="w-6 h-6" />
+                    </button>
+                </motion.div>
 
-                        <motion.button
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                            onClick={() => alert("Downloading the full comic...")}
-                            className="bg-[#6366f1] text-white border-[3px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] px-6 py-3 md:px-10 rounded-xl font-black text-sm md:text-base flex items-center gap-2 hover:bg-[#5558e6] transition-colors"
-                        >
-                            <Download className="w-5 h-5" />
-                            Download Project
-                        </motion.button>
-                    </div>
-                </div>
+                {/* Action Buttons */}
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 1 }}
+                    className="flex items-center gap-3 mt-5"
+                >
+                    <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        className="bg-white/10 backdrop-blur-sm border border-white/20 text-white px-5 py-3 rounded-xl font-black text-sm flex items-center gap-2 hover:bg-white/20 transition-all"
+                    >
+                        <Share2 className="w-4 h-4" />
+                        Share
+                    </motion.button>
+
+                    <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={handleDownload}
+                        disabled={isDownloading || panelImages.length === 0}
+                        className="bg-gradient-to-r from-[#facc15] to-[#f59e0b] text-black px-6 py-3 rounded-xl font-black text-sm flex items-center gap-2 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,0.3)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,0.3)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <Download className="w-4 h-4" />
+                        {isDownloading ? 'Generating PDF...' : 'Download PDF'}
+                    </motion.button>
+                </motion.div>
             </main>
-
-            {/* Modify Panel Modal */}
-            <AnimatePresence>
-                {isModifyModalOpen && selectedPanelIndex !== null && (
-                    <>
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            onClick={() => setIsModifyModalOpen(false)}
-                            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
-                        >
-                            <motion.div
-                                initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                                animate={{ opacity: 1, scale: 1, y: 0 }}
-                                exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                                onClick={(e) => e.stopPropagation()}
-                                className="relative w-full max-w-lg bg-white border-[4px] border-black rounded-3xl p-6 md:p-8 shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] z-[101]"
-                            >
-                                <button
-                                    onClick={() => setIsModifyModalOpen(false)}
-                                    className="absolute top-4 right-4 p-2 hover:bg-gray-100 rounded-full transition-colors"
-                                >
-                                    <X className="w-6 h-6" />
-                                </button>
-
-                                <div className="mb-6">
-                                    <h3 className="text-3xl font-black font-display mb-2">Modify Panel {selectedPanelIndex + 1}</h3>
-                                    <p className="text-gray-600 font-bold">Describe how you want to change this specific scene.</p>
-                                </div>
-
-                                {/* Panel Preview (Miniature) */}
-                                <div className="flex gap-4 mb-6">
-                                    <div className="w-24 h-36 shrink-0 border-[3px] border-black rounded-lg overflow-hidden shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                        <img
-                                            src={panelImages[selectedPanelIndex]}
-                                            alt={`Panel ${selectedPanelIndex + 1} preview`}
-                                            className="w-full h-full object-cover"
-                                        />
-                                    </div>
-                                    <div className="flex-1">
-                                        <textarea
-                                            value={modifyPrompt}
-                                            onChange={(e) => setModifyPrompt(e.target.value)}
-                                            placeholder="E.g., Make the character's hair blue, add more rain in the background..."
-                                            className="w-full h-full p-4 border-[3px] border-black rounded-xl resize-none font-bold text-sm focus:outline-none focus:ring-4 focus:ring-black/5"
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Action Area */}
-                                <div className="flex flex-col gap-4">
-                                    <div className="bg-orange-50 border-2 border-orange-200 rounded-xl p-4 flex items-start gap-3">
-                                        <div className="text-orange-500 mt-1">
-                                            <Sparkles className="w-5 h-5" />
-                                        </div>
-                                        <div>
-                                            <p className="font-bold text-sm text-orange-900">Cost: 10 Credits</p>
-                                            <p className="text-xs font-bold text-orange-700/80 mt-1">
-                                                Generating a new image for this panel will consume 10 credits from your balance.
-                                            </p>
-                                        </div>
-                                    </div>
-                                    <motion.button
-                                        whileHover={{ scale: 1.02 }}
-                                        whileTap={{ scale: 0.98 }}
-                                        onClick={handleConfirmModify}
-                                        disabled={!modifyPrompt.trim()}
-                                        className="w-full py-4 bg-[#facc15] text-black font-black text-lg border-[3px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] rounded-xl uppercase flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#ffe033] transition-colors"
-                                    >
-                                        <Pencil className="w-5 h-5" />
-                                        Generate New Panel
-                                    </motion.button>
-                                </div>
-                            </motion.div>
-                        </motion.div>
-                    </>
-                )}
-            </AnimatePresence>
         </div>
     );
 }
