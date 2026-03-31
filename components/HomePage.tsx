@@ -174,9 +174,18 @@ export default function HomePage() {
       firstErrorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
     } else if (!hasError) {
       // Save generation data to localStorage for the pricing page
+      // Send ALL character data (name, role, gender, age, image) for coherent story generation
       const pendingData = {
         storyText,
         style: selectedStyle,
+        characters: selectedCharacters.map(c => ({
+          name: c.name,
+          role: c.role || 'supporting character',
+          gender: c.gender || 'unknown',
+          age: c.age || 'unknown',
+          image: c.image
+        })),
+        // Keep backward compatibility
         characterImage: selectedCharacters[0]?.image
       };
       localStorage.setItem('pendingGenerationData', JSON.stringify(pendingData));

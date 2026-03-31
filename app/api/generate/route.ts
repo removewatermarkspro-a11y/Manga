@@ -2,26 +2,48 @@ import { NextResponse } from 'next/server';
 import Replicate from 'replicate';
 
 // Initialize Replicate client
-// IMPORTANT: useFileOutput: false ensures we get plain URL strings back,
-// not FileOutput objects that the frontend can't use.
+// useFileOutput: false ensures we get plain URL strings back, not FileOutput objects
 const replicate = new Replicate({
     auth: process.env.REPLICATE_API_TOKEN || '',
     useFileOutput: false,
 });
 
+interface CharacterData {
+    name: string;
+    role: string;
+    gender: string;
+    age: string;
+    image: string;
+}
+
 export async function POST(req: Request) {
     try {
         const body = await req.json();
-        const { storyText, style, characterImage } = body;
+        const { storyText, style, characters, characterImage } = body;
 
-        if (!storyText || !style || !characterImage) {
+        // Build character list from the new format, or fallback to old format
+        let characterList: CharacterData[] = [];
+        if (Array.isArray(characters) && characters.length > 0) {
+            characterList = characters;
+        } else if (characterImage) {
+            // Backward compatibility: old format with just one image
+            characterList = [{
+                name: 'Main Character',
+                role: 'protagonist',
+                gender: 'unknown',
+                age: 'unknown',
+                image: characterImage
+            }];
+        }
+
+        if (!storyText || !style || characterList.length === 0) {
             return NextResponse.json(
-                { error: 'Missing required fields: storyText, style, or characterImage' },
+                { error: 'Missing required fields: storyText, style, or characters' },
                 { status: 400 }
             );
         }
 
-        console.log(`Starting generation for 10 panels. Style: ${style}`);
+        console.log(`Starting generation. Style: ${style}, Characters: ${characterList.length}`);
 
         // ========================================================
         // STEP 1: Generate a coherent 10-panel story script via LLaMA
@@ -42,20 +64,36 @@ export async function POST(req: Request) {
             styleInstruction = 'comic (American-style comic book)';
         }
 
-        const llamaSystemPrompt = `You are a professional comic book scriptwriter. You must output ONLY a valid JSON array of exactly 10 strings, with no other text, no markdown, no explanation. Each string is a detailed visual description of one comic panel. The descriptions must form a coherent narrative arc with consistent characters, settings, and visual details throughout all 10 panels. Every panel description must mention the main character's appearance consistently so the image generator can maintain visual consistency.`;
+        // Build a detailed character description string for LLaMA
+        const characterDescriptions = characterList.map((c, i) => {
+            return `Character ${i + 1}: "${c.name}" - Role: ${c.role}, Gender: ${c.gender}, Age: ${c.age}. A reference photo of this character is provided.`;
+        }).join('\n');
 
-        const llamaUserPrompt = `Write a 10-panel ${styleInstruction} story based on this concept: "${storyText}"
+        const llamaSystemPrompt = `You are a professional ${styleInstruction} scriptwriter. You create vivid, detailed panel-by-panel scripts for comic stories. You must output ONLY a valid JSON array of exactly 10 strings. No other text, no markdown, no explanation, no code fences. Just the raw JSON array.`;
 
-Rules:
-- Output ONLY a JSON array of 10 strings. No other text.
-- Each string must be a rich, detailed visual scene description (2-3 sentences).
-- Describe the character's physical appearance consistently in every panel.
-- Include specific details: poses, expressions, backgrounds, lighting, camera angles.
-- The panels must follow a clear narrative arc: Setup → Conflict → Climax → Resolution.
-- Write all descriptions in English.
+        const llamaUserPrompt = `Create a 10-panel ${styleInstruction} story based on the following:
 
-Example format:
-["Panel 1 description...", "Panel 2 description...", ..., "Panel 10 description..."]`;
+STORY CONCEPT: "${storyText}"
+
+CHARACTERS:
+${characterDescriptions}
+
+CRITICAL RULES:
+1. Output ONLY a valid JSON array of exactly 10 strings. Nothing else.
+2. Each string is a detailed visual description of ONE comic panel (2-3 sentences).
+3. You MUST mention each character BY NAME in the relevant panels.
+4. Describe each character's physical appearance, clothing, and expressions in EVERY panel they appear in.
+5. Include specific visual details: poses, facial expressions, backgrounds, lighting, camera angles.
+6. The 10 panels must follow a clear narrative arc based on the story concept:
+   - Panels 1-2: Setup and introduction
+   - Panels 3-4: Rising action
+   - Panels 5-6: Midpoint twist
+   - Panels 7-8: Climax
+   - Panels 9-10: Resolution
+7. The story must be DIRECTLY about "${storyText}" - do not invent a different story.
+8. Write all descriptions in English.
+
+Output the JSON array now:`;
 
         const llamaOutput = await replicate.run(
             "meta/meta-llama-3-8b-instruct",
@@ -78,7 +116,7 @@ Example format:
             llamaText = String(llamaOutput);
         }
 
-        console.log('LLaMA raw output:', llamaText.substring(0, 500));
+        console.log('LLaMA raw output (first 500 chars):', llamaText.substring(0, 500));
 
         // Parse the JSON array from LLaMA's output
         let panelDescriptions: string[] = [];
@@ -89,33 +127,35 @@ Example format:
                 panelDescriptions = JSON.parse(jsonMatch[0]);
             }
         } catch (parseError) {
-            console.error('Failed to parse LLaMA output as JSON, using fallback:', parseError);
+            console.error('Failed to parse LLaMA output as JSON:', parseError);
         }
 
-        // Fallback: if parsing failed, use generic narrative beats
+        // Fallback: if parsing failed, use the story text directly
         if (!Array.isArray(panelDescriptions) || panelDescriptions.length < 10) {
-            console.warn('LLaMA parsing failed or returned < 10 panels. Using fallback narrative beats.');
+            console.warn('LLaMA parsing failed or returned < 10 panels. Using fallback.');
+            const charNames = characterList.map(c => c.name).join(' and ');
             panelDescriptions = [
-                `Establishing shot: The main character stands in the setting of ${storyText}. Wide angle view showing the environment.`,
-                `The inciting incident: Something unexpected happens that disrupts the character's normal life. Close-up on their surprised expression.`,
-                `Rising action: The character begins to react and take action. Dynamic pose showing determination.`,
-                `Complication: An obstacle or antagonist appears, creating tension. Dramatic lighting and shadows.`,
-                `The midpoint: A significant discovery or turning point changes everything. Medium shot of the character processing new information.`,
-                `Escalation: The stakes get higher. Action scene with dynamic movement and energy.`,
-                `The crisis: The character faces their biggest challenge yet. Intense close-up showing struggle and emotion.`,
-                `The climax: The most intense moment of confrontation or action. Full-page spread feeling with maximum dramatic impact.`,
-                `Falling action: The immediate aftermath. The character catches their breath. Quieter, reflective mood.`,
-                `Resolution: The final outcome. The character has changed. Peaceful wide shot showing the new status quo.`
+                `Opening scene: ${charNames} in the setting of "${storyText}". Wide establishing shot showing the environment and characters.`,
+                `${characterList[0].name} reacts to an unexpected event. Close-up showing surprise and determination.`,
+                `${charNames} takes action. Dynamic pose showing movement and energy.`,
+                `An obstacle or antagonist appears, creating tension. Dramatic lighting with shadows.`,
+                `A significant discovery or turning point. Medium shot of ${characterList[0].name} processing new information.`,
+                `The stakes get higher. Action scene with dynamic movement between characters.`,
+                `${characterList[0].name} faces the biggest challenge yet. Intense close-up showing struggle.`,
+                `The climax: the most intense moment. Full dramatic impact with ${charNames}.`,
+                `The immediate aftermath. ${characterList[0].name} catches their breath. Quieter mood.`,
+                `Resolution: ${charNames} shown in the new status quo. Peaceful wide shot showing the outcome.`
             ];
         }
 
         // Ensure exactly 10 descriptions
         panelDescriptions = panelDescriptions.slice(0, 10);
         while (panelDescriptions.length < 10) {
-            panelDescriptions.push(`A continuation scene of the story: ${storyText}. The character is shown in a new pose.`);
+            panelDescriptions.push(`A continuation scene featuring ${characterList[0].name} in the story "${storyText}".`);
         }
 
-        console.log('Step 1 complete! Generated', panelDescriptions.length, 'panel descriptions.');
+        console.log('Step 1 complete!', panelDescriptions.length, 'panel descriptions generated.');
+        console.log('Panel 1 preview:', panelDescriptions[0].substring(0, 100));
 
         // ========================================================
         // STEP 2: Generate images one by one with nano-banana
@@ -124,11 +164,14 @@ Example format:
 
         const generatedImages: string[] = [];
 
+        // Collect all character images for the image_input array
+        const allCharacterImages = characterList.map(c => c.image);
+
         for (let i = 0; i < 10; i++) {
             const panelDesc = panelDescriptions[i];
 
-            // Construct the full prompt combining style + LLaMA description
-            const fullPrompt = `${styleKeywords}. A single comic panel illustration. ${panelDesc}. The main character is visually consistent with the provided reference image.`;
+            // Construct the full prompt: style keywords + LLaMA's scene description
+            const fullPrompt = `${styleKeywords}. A single comic panel illustration. ${panelDesc}. The characters are visually consistent with the provided reference images. Maintain the same art style throughout.`;
 
             console.log(`Generating panel ${i + 1}/10...`);
 
@@ -137,19 +180,18 @@ Example format:
                 {
                     input: {
                         prompt: fullPrompt,
-                        image_input: [characterImage],
+                        image_input: allCharacterImages,
                         aspect_ratio: "3:4",
                         output_format: "jpg"
                     }
                 }
             );
 
-            // With useFileOutput: false, output should be a plain URL string
+            // With useFileOutput: false, output is a plain URL string
             let imageUrl = '';
             if (typeof output === 'string') {
                 imageUrl = output;
             } else if (output && typeof output === 'object' && 'url' in output) {
-                // Fallback for FileOutput objects
                 imageUrl = String((output as any).url());
             } else {
                 imageUrl = String(output);
