@@ -142,13 +142,10 @@ export default function ResultsPage() {
 
                                 {/* The Comic Image */}
                                 <div className="w-full aspect-[2/3] md:aspect-auto">
-                                    <Image
+                                    <img
                                         src={imgSrc}
                                         alt={`Comic Panel ${index + 1}`}
-                                        width={800}
-                                        height={1200}
                                         className="w-full h-full object-cover md:object-contain"
-                                        priority={index < 2} // load first 2 panels faster
                                     />
                                 </div>
                             </div>
@@ -212,11 +209,9 @@ export default function ResultsPage() {
                                 {/* Panel Preview (Miniature) */}
                                 <div className="flex gap-4 mb-6">
                                     <div className="w-24 h-36 shrink-0 border-[3px] border-black rounded-lg overflow-hidden shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                        <Image
+                                        <img
                                             src={panelImages[selectedPanelIndex]}
                                             alt={`Panel ${selectedPanelIndex + 1} preview`}
-                                            width={150}
-                                            height={225}
                                             className="w-full h-full object-cover"
                                         />
                                     </div>
