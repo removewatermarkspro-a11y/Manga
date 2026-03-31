@@ -52,8 +52,8 @@ export async function POST(req: Request) {
 
         // For V1, we will do Promise.all since google/nano-banana-2 is very fast.
         // It might be safer to do them sequentially or in batches if Replicate complains about concurrency limits.
-        // Doing batches of 5.
-        const batchSize = 5;
+        // generate one by one to avoid Replicate's "High demand / concurrency" limits.
+        const batchSize = 1;
         for (let i = 0; i < 10; i += batchSize) {
             const batchPromises = [];
             for (let j = 0; j < batchSize && (i + j) < 10; j++) {
