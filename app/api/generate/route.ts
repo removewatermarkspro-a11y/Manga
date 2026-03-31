@@ -64,7 +64,7 @@ export async function POST(req: Request) {
                 const fullPrompt = `${styleKeywords}. A single comic panel. ${narrativeBeat} The main character is visually consistent with the input image. The story setting: ${storyText}.`;
 
                 const promise = replicate.run(
-                    "google/nano-banana-2",
+                    "google/nano-banana",
                     {
                         input: {
                             prompt: fullPrompt,
