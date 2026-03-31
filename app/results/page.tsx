@@ -141,7 +141,7 @@ export default function ResultsPage() {
                                 </div>
 
                                 {/* The Comic Image */}
-                                <div className="w-full aspect-[2/3] md:aspect-auto">
+                                <div className="w-full aspect-[2/3] md:min-h-[600px] flex items-center justify-center bg-gray-200">
                                     <img
                                         src={imgSrc}
                                         alt={`Comic Panel ${index + 1}`}
