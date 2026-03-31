@@ -6,10 +6,11 @@ import { useEffect, useState } from 'react';
 interface LoadingPopupProps {
     isOpen: boolean;
     selectedStyle: string;
-    onComplete: () => void;
+    onComplete?: () => void;
+    autoClose?: boolean;
 }
 
-export default function LoadingPopup({ isOpen, selectedStyle, onComplete }: LoadingPopupProps) {
+export default function LoadingPopup({ isOpen, selectedStyle, onComplete, autoClose = true }: LoadingPopupProps) {
     const [progress, setProgress] = useState(0);
 
     useEffect(() => {
@@ -21,24 +22,35 @@ export default function LoadingPopup({ isOpen, selectedStyle, onComplete }: Load
             // Update progress based on elapsed time
             const progressInterval = setInterval(() => {
                 const elapsed = Date.now() - startTime;
-                const newProgress = Math.min((elapsed / duration) * 100, 100);
+                let newProgress = (elapsed / duration) * 100;
+                
+                // If autoClose is false, cap progress at 99% until manually closed
+                if (!autoClose) {
+                    newProgress = Math.min(newProgress, 99);
+                } else {
+                    newProgress = Math.min(newProgress, 100);
+                }
+                
                 setProgress(newProgress);
 
-                if (newProgress >= 100) {
+                if (newProgress >= 100 && autoClose) {
                     clearInterval(progressInterval);
                 }
             }, 50); // Update every 50ms for smoother animation
 
-            // Auto close after 7 seconds
-            const timer = setTimeout(() => {
-                setProgress(100);
-                clearInterval(progressInterval);
-                onComplete();
-            }, duration);
+            // Auto close after 7 seconds if enabled
+            let timer: NodeJS.Timeout;
+            if (autoClose) {
+                timer = setTimeout(() => {
+                    setProgress(100);
+                    clearInterval(progressInterval);
+                    if (onComplete) onComplete();
+                }, duration);
+            }
 
             return () => {
                 clearInterval(progressInterval);
-                clearTimeout(timer);
+                if (timer) clearTimeout(timer);
             };
         }
     }, [isOpen]);

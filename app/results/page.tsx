@@ -16,8 +16,8 @@ export default function ResultsPage() {
     const [selectedPanelIndex, setSelectedPanelIndex] = useState<number | null>(null);
     const [modifyPrompt, setModifyPrompt] = useState("");
 
-    // Placeholder images to simulate 10 panels
-    const panelImages = [
+    // Panels images state
+    const [panelImages, setPanelImages] = useState<string[]>([
         '/images/form-example-1.jpg',
         '/images/form-example-2.jpg',
         '/images/form-example-3.jpg',
@@ -28,7 +28,21 @@ export default function ResultsPage() {
         '/images/form-example-4.jpg',
         '/images/form-example-1.jpg',
         '/images/form-example-2.jpg',
-    ];
+    ]);
+
+    useEffect(() => {
+        const storedImages = localStorage.getItem('generatedImages');
+        if (storedImages) {
+            try {
+                const parsed = JSON.parse(storedImages);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    setPanelImages(parsed);
+                }
+            } catch (e) {
+                console.error("Failed to parse generatedImages from localStorage", e);
+            }
+        }
+    }, []);
 
     const handleLogout = () => {
         setIsLoggedIn(false);

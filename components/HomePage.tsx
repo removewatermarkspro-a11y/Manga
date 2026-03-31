@@ -173,6 +173,15 @@ export default function HomePage() {
     if (hasError && firstErrorElement) {
       firstErrorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
     } else if (!hasError) {
+      // Save generation data to localStorage for the pricing page
+      const pendingData = {
+        storyText,
+        style: selectedStyle,
+        characterImage: selectedCharacters[0]?.image
+      };
+      localStorage.setItem('pendingGenerationData', JSON.stringify(pendingData));
+      
+      // Start fake loading sequence
       setIsLoadingPopupOpen(true);
     }
   };
@@ -180,13 +189,8 @@ export default function HomePage() {
   const handleLoadingComplete = () => {
     setIsLoadingPopupOpen(false);
 
-    // If user is already logged in, skip the ResultReadyPopup and go directly to results
-    if (isLoggedIn) {
-      window.location.href = '/pricing';
-    } else {
-      // Show ResultReadyPopup for non-logged in users
-      setIsResultReadyPopupOpen(true);
-    }
+    // Redirect to pricing page to show offers
+    window.location.href = '/pricing';
   };
 
   const handleResultReadyContinue = () => {

@@ -6,13 +6,15 @@ import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Lock, Check } from 'lucide-react';
 import Footer from '../../components/Footer';
+import LoadingPopup from '../../components/LoadingPopup';
 
-export default function ResultsPage() {
+export default function PricingPage() {
     const [selectedStyle, setSelectedStyle] = useState<string>('manga');
-    const [selectedPlan, setSelectedPlan] = useState<'yearly' | 'monthly' | 'onetime'>('yearly');
+    const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'onetime'>('monthly');
     const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isMounted, setIsMounted] = useState(false);
+    const [isLoadingPopupOpen, setIsLoadingPopupOpen] = useState(false);
     const profileDropdownRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -96,6 +98,38 @@ export default function ResultsPage() {
         localStorage.removeItem('isLoggedIn');
         // Redirect to homepage to show logged out state
         window.location.href = '/';
+    };
+
+    const handlePlanSelect = async () => {
+        const storedDataString = localStorage.getItem('pendingGenerationData');
+        if (!storedDataString) {
+            alert('No pending story found. Please go back to the home page and create one.');
+            return;
+        }
+
+        const pendingData = JSON.parse(storedDataString);
+        setIsLoadingPopupOpen(true);
+
+        try {
+            const res = await fetch('/api/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(pendingData)
+            });
+            const data = await res.json();
+            
+            if (data.images) {
+                localStorage.setItem('generatedImages', JSON.stringify(data.images));
+                localStorage.removeItem('pendingGenerationData'); // Clean up
+                window.location.href = '/results';
+            } else {
+                throw new Error(data.error || 'Unknown error');
+            }
+        } catch (error: any) {
+            console.error('Generation Error:', error);
+            alert(`Failed to generate comic: ${error.message}`);
+            setIsLoadingPopupOpen(false);
+        }
     };
 
     return (
@@ -476,21 +510,21 @@ export default function ResultsPage() {
                     </div>
 
                     {/* Pricing Grid */}
-                    <div className="grid md:grid-cols-3 gap-4 lg:gap-6 w-full xl:px-0 flex-1">
-                        {/* Monthly Plan - NOW FIRST (LEFT) */}
+                    <div className="grid md:grid-cols-2 gap-4 lg:gap-8 max-w-4xl mx-auto w-full xl:px-0 flex-1">
+                        {/* Monthly Plan - 10 Comics */}
                         <motion.div
                             whileHover={{ scale: 1.02, y: -5 }}
                             onClick={() => setSelectedPlan('monthly')}
-                            className="relative border-[4px] border-black rounded-3xl p-6 lg:p-8 cursor-pointer transition-all bg-[#facc15] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:scale-[1.02] hover:-translate-y-1 z-10 flex flex-col h-full"
+                            className={`relative border-[4px] border-black rounded-3xl p-6 lg:p-8 cursor-pointer transition-all ${selectedPlan === 'monthly' ? 'bg-[#facc15] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]' : 'bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]'} hover:scale-[1.02] hover:-translate-y-1 z-10 flex flex-col h-full`}
                         >
                             <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-black text-white px-4 py-1 rounded-full text-xs font-bold border-2 border-white">
-                                MOST POPULAR
+                                PREFERRED
                             </div>
                             <div className="text-center flex flex-col h-full justify-between">
                                 <div>
-                                    <h4 className="text-xl font-black mb-2">Monthly Plan</h4>
+                                    <h4 className="text-xl font-black mb-2">Formule Abonnement</h4>
                                     <div className="mb-4">
-                                        <span className="text-3xl font-black">€24.99</span>
+                                        <span className="text-3xl font-black">€9.90</span>
                                         <span className="text-xs font-bold opacity-70">/month</span>
                                     </div>
                                     <div className="inline-block bg-transparent text-transparent px-2 py-1 rounded-md text-xs font-bold mb-6 border border-transparent">
@@ -498,109 +532,45 @@ export default function ResultsPage() {
                                     </div>
                                     <ul className="text-left space-y-3 mb-6 text-sm">
                                         <li className="flex items-center gap-3 font-bold">
-                                            <span className="w-6 h-6 rounded-full flex items-center justify-center border-2 border-black shrink-0 bg-black text-yellow-400">
+                                            <span className={`w-6 h-6 rounded-full flex items-center justify-center border-2 border-black shrink-0 ${selectedPlan === 'monthly' ? 'bg-black text-yellow-400' : 'bg-[#facc15] text-black'}`}>
                                                 <Check className="w-3.5 h-3.5" />
                                             </span>
-                                            Unlimited Credits
+                                            10 generated comics / month
                                         </li>
                                         <li className="flex items-center gap-3 font-bold">
-                                            <span className="w-6 h-6 rounded-full flex items-center justify-center border-2 border-black shrink-0 bg-black text-yellow-400">
-                                                <Check className="w-3.5 h-3.5" />
-                                            </span>
-                                            Unlimited Modifications
-                                        </li>
-                                        <li className="flex items-center gap-3 font-bold">
-                                            <span className="w-6 h-6 rounded-full flex items-center justify-center border-2 border-black shrink-0 bg-black text-yellow-400">
-                                                <Check className="w-3.5 h-3.5" />
-                                            </span>
-                                            No Watermark
-                                        </li>
-                                        <li className="flex items-center gap-3 font-bold">
-                                            <span className="w-6 h-6 rounded-full flex items-center justify-center border-2 border-black shrink-0 bg-black text-yellow-400">
+                                            <span className={`w-6 h-6 rounded-full flex items-center justify-center border-2 border-black shrink-0 ${selectedPlan === 'monthly' ? 'bg-black text-yellow-400' : 'bg-[#facc15] text-black'}`}>
                                                 <Check className="w-3.5 h-3.5" />
                                             </span>
                                             Commercial Use
                                         </li>
                                         <li className="flex items-center gap-3 font-bold">
-                                            <span className="w-6 h-6 rounded-full flex items-center justify-center border-2 border-black shrink-0 bg-black text-yellow-400">
-                                                <Check className="w-3.5 h-3.5" />
-                                            </span>
-                                            Standard Access
-                                        </li>
-                                    </ul>
-                                </div>
-                                <button className="w-full py-3 rounded-xl border-[3px] border-black font-black text-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-transform active:translate-y-1 active:shadow-none bg-white mt-auto">
-                                    Get Started
-                                </button>
-                            </div>
-                        </motion.div>
-
-                        {/* Yearly Plan - CENTER (MIDDLE) */}
-                        <motion.div
-                            whileHover={{ scale: 1.02, y: -5 }}
-                            onClick={() => setSelectedPlan('yearly')}
-                            className="relative border-[4px] border-black rounded-3xl p-6 lg:p-8 cursor-pointer transition-all bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:scale-[1.02] hover:-translate-y-1 flex flex-col h-full"
-                        >
-                            <div className="text-center flex flex-col h-full justify-between">
-                                <div>
-                                    <h4 className="text-xl font-black mb-2">Yearly Plan</h4>
-                                    <div className="mb-4">
-                                        <span className="text-3xl font-black">€59.99</span>
-                                        <span className="text-xs font-bold opacity-70">/year</span>
-                                    </div>
-                                    <div className="inline-block bg-transparent text-transparent px-3 py-1 rounded-md text-sm font-bold mb-6 border border-transparent">
-                                        &nbsp;
-                                    </div>
-                                    <ul className="text-left space-y-3 mb-6 text-sm">
-                                        <li className="flex items-center gap-3 font-bold">
-                                            <span className="w-6 h-6 rounded-full flex items-center justify-center border-2 border-black shrink-0 bg-[#facc15] text-black">
-                                                <Check className="w-3.5 h-3.5" />
-                                            </span>
-                                            Unlimited Credits
-                                        </li>
-                                        <li className="flex items-center gap-3 font-bold">
-                                            <span className="w-6 h-6 rounded-full flex items-center justify-center border-2 border-black shrink-0 bg-[#facc15] text-black">
-                                                <Check className="w-3.5 h-3.5" />
-                                            </span>
-                                            Unlimited Modifications
-                                        </li>
-                                        <li className="flex items-center gap-3 font-bold">
-                                            <span className="w-6 h-6 rounded-full flex items-center justify-center border-2 border-black shrink-0 bg-[#facc15] text-black">
+                                            <span className={`w-6 h-6 rounded-full flex items-center justify-center border-2 border-black shrink-0 ${selectedPlan === 'monthly' ? 'bg-black text-yellow-400' : 'bg-[#facc15] text-black'}`}>
                                                 <Check className="w-3.5 h-3.5" />
                                             </span>
                                             No Watermark
                                         </li>
-                                        <li className="flex items-center gap-3 font-bold">
-                                            <span className="w-6 h-6 rounded-full flex items-center justify-center border-2 border-black shrink-0 bg-[#facc15] text-black">
-                                                <Check className="w-3.5 h-3.5" />
-                                            </span>
-                                            Commercial Use
-                                        </li>
-                                        <li className="flex items-center gap-3 font-bold">
-                                            <span className="w-6 h-6 rounded-full flex items-center justify-center border-2 border-black shrink-0 bg-[#facc15] text-black">
-                                                <Check className="w-3.5 h-3.5" />
-                                            </span>
-                                            Priority Access
-                                        </li>
                                     </ul>
                                 </div>
-                                <button className="w-full py-3 rounded-xl border-[3px] border-black font-black text-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-transform active:translate-y-1 active:shadow-none bg-white mt-auto">
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); handlePlanSelect(); }}
+                                    className="w-full py-3 rounded-xl border-[3px] border-black font-black text-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-transform active:translate-y-1 active:shadow-none bg-white mt-auto"
+                                >
                                     Get Started
                                 </button>
                             </div>
                         </motion.div>
 
-                        {/* One Time Payment - NOW LAST (RIGHT) */}
+                        {/* One Time Payment - 1 Comic */}
                         <motion.div
                             whileHover={{ scale: 1.02, y: -5 }}
                             onClick={() => setSelectedPlan('onetime')}
-                            className="relative border-[4px] border-black rounded-3xl p-6 lg:p-8 cursor-pointer transition-all bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:scale-[1.02] hover:-translate-y-1 flex flex-col h-full"
+                            className={`relative border-[4px] border-black rounded-3xl p-6 lg:p-8 cursor-pointer transition-all ${selectedPlan === 'onetime' ? 'bg-[#facc15] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]' : 'bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]'} hover:scale-[1.02] hover:-translate-y-1 flex flex-col h-full`}
                         >
                             <div className="text-center flex flex-col h-full justify-between">
                                 <div>
-                                    <h4 className="text-xl font-black mb-2">One Time</h4>
+                                    <h4 className="text-xl font-black mb-2">One Time Payment</h4>
                                     <div className="mb-4">
-                                        <span className="text-3xl font-black">€9.99</span>
+                                        <span className="text-3xl font-black">€14.90</span>
                                         <span className="text-xs font-bold opacity-70">/once</span>
                                     </div>
                                     <div className="inline-block bg-transparent text-transparent px-2 py-1 rounded-md text-xs font-bold mb-6 border border-transparent">
@@ -608,44 +578,29 @@ export default function ResultsPage() {
                                     </div>
                                     <ul className="text-left space-y-3 mb-6 text-sm">
                                         <li className="flex items-center gap-3 font-bold">
-                                            <span className="w-6 h-6 rounded-full flex items-center justify-center border-2 border-black shrink-0 bg-[#facc15] text-black">
+                                            <span className={`w-6 h-6 rounded-full flex items-center justify-center border-2 border-black shrink-0 ${selectedPlan === 'onetime' ? 'bg-black text-yellow-400' : 'bg-[#facc15] text-black'}`}>
                                                 <Check className="w-3.5 h-3.5" />
                                             </span>
-                                            130 Credits
+                                            1 generated comic
                                         </li>
                                         <li className="flex items-center gap-3 font-bold">
-                                            <span className="w-6 h-6 rounded-full flex items-center justify-center border-2 border-black shrink-0 bg-[#facc15] text-black">
-                                                <Check className="w-3.5 h-3.5" />
-                                            </span>
-                                            1 Full Manga/Comic/Manhwa
-                                        </li>
-                                        <li className="flex items-center gap-3 font-bold">
-                                            <span className="w-6 h-6 rounded-full flex items-center justify-center border-2 border-black shrink-0 bg-[#facc15] text-black">
-                                                <Check className="w-3.5 h-3.5" />
-                                            </span>
-                                            3 Modifications
-                                        </li>
-                                        <li className="flex items-center gap-3 font-bold">
-                                            <span className="w-6 h-6 rounded-full flex items-center justify-center border-2 border-black shrink-0 bg-[#facc15] text-black">
-                                                <Check className="w-3.5 h-3.5" />
-                                            </span>
-                                            No Watermark
-                                        </li>
-                                        <li className="flex items-center gap-3 font-bold">
-                                            <span className="w-6 h-6 rounded-full flex items-center justify-center border-2 border-black shrink-0 bg-[#facc15] text-black">
+                                            <span className={`w-6 h-6 rounded-full flex items-center justify-center border-2 border-black shrink-0 ${selectedPlan === 'onetime' ? 'bg-black text-yellow-400' : 'bg-[#facc15] text-black'}`}>
                                                 <Check className="w-3.5 h-3.5" />
                                             </span>
                                             Commercial Use
                                         </li>
                                         <li className="flex items-center gap-3 font-bold">
-                                            <span className="w-6 h-6 rounded-full flex items-center justify-center border-2 border-black shrink-0 bg-[#facc15] text-black">
+                                            <span className={`w-6 h-6 rounded-full flex items-center justify-center border-2 border-black shrink-0 ${selectedPlan === 'onetime' ? 'bg-black text-yellow-400' : 'bg-[#facc15] text-black'}`}>
                                                 <Check className="w-3.5 h-3.5" />
                                             </span>
-                                            No Expiration
+                                            No Watermark
                                         </li>
                                     </ul>
                                 </div>
-                                <button className="w-full py-3 rounded-xl border-[3px] border-black font-black text-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-transform active:translate-y-1 active:shadow-none bg-white mt-auto">
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); handlePlanSelect(); }}
+                                    className="w-full py-3 rounded-xl border-[3px] border-black font-black text-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-transform active:translate-y-1 active:shadow-none bg-white mt-auto"
+                                >
                                     Get Started
                                 </button>
                             </div>
@@ -676,6 +631,13 @@ export default function ResultsPage() {
         </main>
 
             <Footer />
+
+            {/* Loading Popup for Real Generation */}
+            <LoadingPopup
+                isOpen={isLoadingPopupOpen}
+                selectedStyle={selectedStyle}
+                autoClose={false}
+            />
         </div>
     );
 }
