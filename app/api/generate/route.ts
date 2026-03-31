@@ -69,9 +69,7 @@ export async function POST(req: Request) {
                         input: {
                             prompt: fullPrompt,
                             image_input: [characterImage], // use the uploaded character base64
-                            aspect_ratio: "2:3", // Good aspect ratio for comic panels
-                            google_search: false,
-                            image_search: false,
+                            aspect_ratio: "3:4", // Good typical portrait aspect ratio for comic panels
                             output_format: "jpg"
                         }
                     }
