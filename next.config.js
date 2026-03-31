@@ -2,7 +2,13 @@
 const nextConfig = {
     reactStrictMode: true,
     images: {
-        domains: ['images.unsplash.com', 'replicate.delivery', 'replicate.com'],
+        remotePatterns: [
+            { protocol: 'https', hostname: 'images.unsplash.com' },
+            { protocol: 'https', hostname: 'replicate.delivery' },
+            { protocol: 'https', hostname: '*.replicate.delivery' },
+            { protocol: 'https', hostname: 'replicate.com' },
+            { protocol: 'https', hostname: '*.replicate.com' }
+        ],
     },
     eslint: {
         ignoreDuringBuilds: true,
