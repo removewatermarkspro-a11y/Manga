@@ -357,7 +357,7 @@ export default function HomePage() {
               AI Comic Generator
             </span>
             <h1 className="text-3xl md:text-5xl lg:text-6xl font-black leading-tight tracking-wider font-display uppercase drop-shadow-sm mb-2 md:mb-6">
-              CREATE COMIC BOOKS AND MANGA ONLINE <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#6366f1] to-[#8b5cf6]">WITH AI</span>
+              CREATE COMIC BOOKS AND MANGA <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#6366f1] to-[#8b5cf6]">WITH AI</span>
             </h1>
           </motion.div>
         </div>
@@ -365,10 +365,12 @@ export default function HomePage() {
         {/* Background wrapper for form section - transparent to allow top-level bg through */}
         <div className="relative -mx-6 px-6 mb-12 md:mb-24">
           <div className="relative z-10">
-            {/* Description */}
-            <p className="text-sm md:text-base text-gray-700 leading-relaxed max-w-xl mx-auto mb-8 mt-4 md:mt-0">
-              Create stunning comics, webtoons, and manga in minutes with our AI generator. Choose your style—from superhero to romantic manga—and bring your professional comic strips to life instantly. No drawing skills required!
-            </p>
+            {/* Description / Subtitle */}
+            <div className="flex flex-col items-center justify-center space-y-2 mb-8 mt-4 md:mt-0">
+              <p className="text-sm md:text-lg font-bold text-gray-800 tracking-wider">
+                Write your story <span className="text-gray-400 font-normal mx-1">→</span> Add characters <span className="text-gray-400 font-normal mx-1">→</span> Generate your comic
+              </p>
+            </div>
 
             {/* Mobile CTA and Marquee */}
             <div className="flex flex-col items-center md:hidden w-full mt-4 mb-8 overflow-hidden space-y-6">
@@ -386,18 +388,14 @@ export default function HomePage() {
                     animate={{ x: "-50%" }}
                     transition={{ repeat: Infinity, ease: "linear", duration: 15 }}
                   >
-                    {[...examples, ...examples, ...examples, ...examples].map((ex, index) => {
-                      const i = ex.id;
-                      return (
+                    {[1, 2, 3, 4, 1, 2, 3, 4].map((num, index) => (
                         <div 
-                          key={`${index}-${ex.id}`} 
-                          className="w-[140px] h-[100px] bg-white border-[3px] border-black flex-shrink-0 flex items-center justify-center relative overflow-hidden rounded-lg shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]"
+                          key={`${index}-${num}`} 
+                          className="w-[120px] h-[180px] bg-white border-[3px] border-black flex-shrink-0 flex items-center justify-center relative overflow-hidden rounded-lg shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]"
                         >
-                          <div className={`absolute inset-0 bg-gradient-to-br ${i === 1 ? 'from-orange-200 to-orange-300' : i === 2 ? 'from-blue-200 to-blue-300' : i === 3 ? 'from-purple-200 to-purple-300' : 'from-pink-200 to-pink-300'} opacity-50`}></div>
-                          <span className="text-4xl z-10">{['🎬', '🦸‍♂️', '🎇', '🌅'][i-1]}</span>
+                          <img src={`/images/form-example-${num}.jpg`} alt={`Example ${num}`} className="w-full h-full object-cover" />
                         </div>
-                      );
-                    })}
+                    ))}
                   </motion.div>
                 </div>
               </div>
