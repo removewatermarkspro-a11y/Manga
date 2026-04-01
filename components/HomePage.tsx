@@ -368,17 +368,17 @@ export default function HomePage() {
         <div className="relative -mx-6 px-6 mb-12 md:mb-24">
           <div className="relative z-10">
             {/* Description / Subtitle */}
-            <div className="flex flex-col items-center justify-center space-y-2 mb-8 mt-4 md:mt-0">
-              <p className="text-sm md:text-lg font-bold text-gray-800 tracking-wider">
-                Write your story <span className="text-gray-400 font-normal mx-1">→</span> Add characters <span className="text-gray-400 font-normal mx-1">→</span> Generate your comic
+            <div className="flex flex-col items-center justify-center space-y-2 mb-8 mt-4 md:mt-0 w-full overflow-hidden">
+              <p className="text-[12px] min-[380px]:text-[13px] sm:text-sm md:text-base font-bold text-gray-800 tracking-wider whitespace-nowrap">
+                Write your story <span className="text-gray-400 font-normal mx-0.5 md:mx-1">→</span> Add characters <span className="text-gray-400 font-normal mx-0.5 md:mx-1">→</span> Generate your comic
               </p>
             </div>
 
             {/* Mobile CTA and Marquee */}
-            <div className="flex flex-col items-center md:hidden w-full mt-4 mb-8 overflow-hidden space-y-6">
+            <div className="flex flex-col items-center justify-center md:hidden w-full mt-4 mb-8 overflow-hidden space-y-6">
               <button 
                 onClick={scrollToForm}
-                className="px-6 py-4 bg-[#facc15] text-black font-black text-xl border-[4px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center gap-2 rounded-xl"
+                className="w-11/12 max-w-sm mx-auto px-4 py-3 bg-[#facc15] text-black font-black text-lg border-[4px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center gap-2 rounded-xl"
               >
                 👇 Create your comic book
               </button>
