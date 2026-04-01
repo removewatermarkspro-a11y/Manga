@@ -4,16 +4,19 @@ import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import Image from 'next/image';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface HeaderProps {
-    isLoggedIn: boolean;
+    isLoggedIn?: boolean;
     onAuthClick: () => void;
-    onLogout: () => void;
+    onLogout?: () => void;
     availableCredits?: number;
     logoContainerClassName?: string;
 }
 
-export default function Header({ isLoggedIn, onAuthClick, onLogout, availableCredits = 0, logoContainerClassName = "" }: HeaderProps) {
+export default function Header({ onAuthClick, onLogout, availableCredits, logoContainerClassName = "" }: HeaderProps) {
+    const { isLoggedIn, profile, credits, signOut } = useAuth();
+    const displayCredits = availableCredits !== undefined ? availableCredits : credits;
     const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isMounted, setIsMounted] = useState(false);
@@ -38,10 +41,11 @@ export default function Header({ isLoggedIn, onAuthClick, onLogout, availableCre
         };
     }, [isMobileMenuOpen]);
 
-    const handleLogoutClick = (e: React.MouseEvent) => {
+    const handleLogoutClick = async (e: React.MouseEvent) => {
         e.stopPropagation();
         e.preventDefault();
-        onLogout();
+        if (onLogout) onLogout();
+        await signOut();
     };
 
     const closeMobileMenu = () => {
@@ -147,7 +151,7 @@ export default function Header({ isLoggedIn, onAuthClick, onLogout, availableCre
                                     <path d="M11 0.7H13L22.5 6V18L13 23.3H11L1.5 18V6L11 0.7Z" />
                                 </svg>
                             </span>
-                            <span className="font-black text-sm">{availableCredits} Credits</span>
+                            <span className="font-black text-sm">{displayCredits} Credits</span>
                         </div>
 
                         {/* Profile Button with Dropdown */}
@@ -172,7 +176,7 @@ export default function Header({ isLoggedIn, onAuthClick, onLogout, availableCre
                                     <div className="absolute top-full mt-2 left-0 bg-white rounded-lg shadow-lg min-w-[240px] z-50 overflow-hidden border border-gray-200">
                                         {/* Email Header */}
                                         <div className="px-4 py-3 bg-gray-50">
-                                            <p className="text-sm font-bold text-gray-800 truncate">user@example.com</p>
+                                            <p className="text-sm font-bold text-gray-800 truncate">{profile?.email || 'User'}</p>
                                         </div>
 
                                         {/* My Creations */}
@@ -186,10 +190,11 @@ export default function Header({ isLoggedIn, onAuthClick, onLogout, availableCre
                                         {/* Logout */}
                                         <button
                                             type="button"
-                                            onClick={(e) => {
+                                            onClick={async (e) => {
                                                 e.preventDefault();
                                                 e.stopPropagation();
-                                                onLogout();
+                                                if (onLogout) onLogout();
+                                                await signOut();
                                             }}
                                             className="w-full px-4 py-3 text-left text-sm font-bold hover:bg-gray-100 transition-all cursor-pointer flex items-center gap-2 text-red-600"
                                         >
@@ -351,7 +356,7 @@ export default function Header({ isLoggedIn, onAuthClick, onLogout, availableCre
                                                         <path d="M11 0.7H13L22.5 6V18L13 23.3H11L1.5 18V6L11 0.7Z" />
                                                     </svg>
                                                 </span>
-                                                <span className="font-black text-lg">{availableCredits} Credits Available</span>
+                                                <span className="font-black text-lg">{displayCredits} Credits Available</span>
                                             </div>
 
                                             <button
@@ -369,7 +374,7 @@ export default function Header({ isLoggedIn, onAuthClick, onLogout, availableCre
                                             </a>
                                             <button
                                                 type="button"
-                                                onClick={(e) => {
+                                                onClick={async (e) => {
                                                     handleLogoutClick(e);
                                                     closeMobileMenu();
                                                 }}

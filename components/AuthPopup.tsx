@@ -3,6 +3,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
 import { useState } from 'react';
+import { createClient } from '@/lib/supabase/client';
 
 interface AuthPopupProps {
     isOpen: boolean;
@@ -13,28 +14,63 @@ interface AuthPopupProps {
 export default function AuthPopup({ isOpen, onClose, onLogin }: AuthPopupProps) {
     const [email, setEmail] = useState('');
     const [showConfirmation, setShowConfirmation] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [errorMessage, setErrorMessage] = useState('');
 
-    const handleEmailLogin = (e: React.FormEvent) => {
+    const supabase = createClient();
+
+    const handleEmailLogin = async (e: React.FormEvent) => {
         e.preventDefault();
-        // TODO: Implement email authentication
-        console.log('Email login:', email);
-        // Show confirmation popup
-        setShowConfirmation(true);
+        setIsSubmitting(true);
+        setErrorMessage('');
+
+        try {
+            const { error } = await supabase.auth.signInWithOtp({
+                email,
+                options: {
+                    emailRedirectTo: `${window.location.origin}/auth/callback`,
+                },
+            });
+
+            if (error) {
+                setErrorMessage(error.message);
+                console.error('Email login error:', error);
+            } else {
+                setShowConfirmation(true);
+            }
+        } catch (err) {
+            console.error('Email login error:', err);
+            setErrorMessage('An error occurred. Please try again.');
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
-    const handleGoogleLogin = () => {
-        // TODO: Implement Google OAuth
-        console.log('Google login');
-        // Set user as logged in and stay on landing page
-        if (onLogin) onLogin();
-        onClose();
+    const handleGoogleLogin = async () => {
+        setErrorMessage('');
+
+        try {
+            const { error } = await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    redirectTo: `${window.location.origin}/auth/callback`,
+                },
+            });
+
+            if (error) {
+                setErrorMessage(error.message);
+                console.error('Google login error:', error);
+            }
+            // User will be redirected to Google, then back to our callback
+        } catch (err) {
+            console.error('Google login error:', err);
+            setErrorMessage('An error occurred. Please try again.');
+        }
     };
 
     const handleCloseConfirmation = () => {
         setShowConfirmation(false);
         setEmail('');
-        // Set user as logged in and stay on landing page
-        if (onLogin) onLogin();
         onClose();
     };
 
@@ -74,6 +110,13 @@ export default function AuthPopup({ isOpen, onClose, onLogin }: AuthPopupProps) 
                             <h2 className="text-3xl md:text-4xl font-black text-center mb-8 font-display text-black">
                                 Login with e-mail
                             </h2>
+
+                            {/* Error Message */}
+                            {errorMessage && (
+                                <div className="mb-4 p-3 bg-red-100 border-2 border-red-500 text-red-700 text-sm font-bold rounded">
+                                    {errorMessage}
+                                </div>
+                            )}
 
                             {/* Google Login */}
                             <button
@@ -117,13 +160,15 @@ export default function AuthPopup({ isOpen, onClose, onLogin }: AuthPopupProps) 
                                     placeholder="Enter your e-mail here"
                                     className="w-full px-6 py-4 border-[3px] border-black bg-white text-lg placeholder:text-gray-400 focus:outline-none focus:ring-4 focus:ring-[#facc15]/50"
                                     required
+                                    disabled={isSubmitting}
                                 />
 
                                 <button
                                     type="submit"
-                                    className="w-full px-6 py-4 bg-[#facc15] text-black font-bold text-lg border-[3px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-2px] hover:translate-y-[-2px] transition-all"
+                                    disabled={isSubmitting}
+                                    className="w-full px-6 py-4 bg-[#facc15] text-black font-bold text-lg border-[3px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[-2px] hover:translate-y-[-2px] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                    Continue with Email
+                                    {isSubmitting ? 'Sending...' : 'Continue with Email'}
                                 </button>
                             </form>
 

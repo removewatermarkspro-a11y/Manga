@@ -13,6 +13,7 @@ import AddCharacterPopup from './AddCharacterPopup';
 import CreateCharacterPopup from './CreateCharacterPopup';
 import LoadingPopup from './LoadingPopup';
 import ResultReadyPopup from './ResultReadyPopup';
+import { useAuth } from '@/contexts/AuthContext';
 
 type StyleType = 'comic' | 'manga' | 'manhwa';
 
@@ -35,13 +36,17 @@ export default function HomePage() {
   const [showStoryError, setShowStoryError] = useState(false);
   const [isLoadingPopupOpen, setIsLoadingPopupOpen] = useState(false);
   const [isResultReadyPopupOpen, setIsResultReadyPopupOpen] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
-  // Check login status on mount
+  const { isLoggedIn, signOut } = useAuth();
+
+  // Open auth popup if redirected with ?auth=required
   useEffect(() => {
-    const loggedIn = localStorage.getItem('isLoggedIn') === 'true';
-    console.log('Checking login status:', loggedIn, 'localStorage value:', localStorage.getItem('isLoggedIn'));
-    setIsLoggedIn(loggedIn);
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('auth') === 'required') {
+      setIsAuthPopupOpen(true);
+      // Clean the URL
+      window.history.replaceState({}, '', '/');
+    }
   }, []);
 
   // Save selected style to localStorage whenever it changes
@@ -62,13 +67,12 @@ export default function HomePage() {
   const closeCreateCharacterPopup = () => setIsCreateCharacterPopupOpen(false);
 
   const handleLogin = () => {
-    setIsLoggedIn(true);
-    localStorage.setItem('isLoggedIn', 'true');
+    // Auth is now handled by Supabase, this is called after successful login
+    setIsAuthPopupOpen(false);
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('isLoggedIn');
-    window.location.href = '/';
+  const handleLogout = async () => {
+    await signOut();
   };
 
   const backToAddCharacter = () => {
@@ -173,8 +177,27 @@ export default function HomePage() {
     if (hasError && firstErrorElement) {
       firstErrorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
     } else if (!hasError) {
+      // Check if user is logged in first
+      if (!isLoggedIn) {
+        // Save pending data then open auth popup
+        const pendingData = {
+          storyText,
+          style: selectedStyle,
+          characters: selectedCharacters.map(c => ({
+            name: c.name,
+            role: c.role || 'supporting character',
+            gender: c.gender || 'unknown',
+            age: c.age || 'unknown',
+            image: c.image
+          })),
+          characterImage: selectedCharacters[0]?.image
+        };
+        localStorage.setItem('pendingGenerationData', JSON.stringify(pendingData));
+        setIsAuthPopupOpen(true);
+        return;
+      }
+
       // Save generation data to localStorage for the pricing page
-      // Send ALL character data (name, role, gender, age, image) for coherent story generation
       const pendingData = {
         storyText,
         style: selectedStyle,
@@ -185,7 +208,6 @@ export default function HomePage() {
           age: c.age || 'unknown',
           image: c.image
         })),
-        // Keep backward compatibility
         characterImage: selectedCharacters[0]?.image
       };
       localStorage.setItem('pendingGenerationData', JSON.stringify(pendingData));
@@ -204,10 +226,7 @@ export default function HomePage() {
 
   const handleResultReadyContinue = () => {
     setIsResultReadyPopupOpen(false);
-    // Set user as logged in
-    setIsLoggedIn(true);
-    localStorage.setItem('isLoggedIn', 'true');
-    // Redirect to results page
+    // Redirect to pricing page
     window.location.href = '/pricing';
   };
   // Example placeholders - you can replace these with actual image paths later

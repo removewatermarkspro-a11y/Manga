@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import Replicate from 'replicate';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { cookies } from 'next/headers';
 
 // Initialize Replicate client
-// useFileOutput: false ensures we get plain URL strings back, not FileOutput objects
 const replicate = new Replicate({
     auth: process.env.REPLICATE_API_TOKEN || '',
     useFileOutput: false,
@@ -17,16 +18,125 @@ interface CharacterData {
 }
 
 // Increase Vercel serverless function timeout (300s on Pro, 60s on Hobby)
-// and body size limit for large base64 character images
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
+function getSupabaseClient() {
+    const cookieStore = cookies();
+    return createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+            cookies: {
+                get(name: string) {
+                    return cookieStore.get(name)?.value;
+                },
+                set(name: string, value: string, options: CookieOptions) {
+                    try {
+                        cookieStore.set({ name, value, ...options });
+                    } catch (error) {}
+                },
+                remove(name: string, options: CookieOptions) {
+                    try {
+                        cookieStore.set({ name, value: '', ...options });
+                    } catch (error) {}
+                },
+            },
+        }
+    );
+}
+
+// Kie API helper for nano-banana-2
+async function generateImageWithKie(prompt: string, imageInput: string[]): Promise<string> {
+    const KIE_API_KEY = "0ebb274e201da9dd3487833efa368f65";
+    
+    // 1. Create Task
+    const createRes = await fetch("https://api.kie.ai/api/v1/jobs/createTask", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${KIE_API_KEY}`
+        },
+        body: JSON.stringify({
+            model: "nano-banana-2",
+            input: {
+                prompt: prompt,
+                image_input: imageInput,
+                aspect_ratio: "3:4",
+                resolution: "1K",
+                output_format: "jpg"
+            }
+        })
+    });
+    
+    if (!createRes.ok) {
+        let errMessage = 'Create Task failed';
+        try {
+            const errData = await createRes.json();
+            errMessage = JSON.stringify(errData);
+        } catch(e) {}
+        throw new Error(`Kie API Create Error: ${createRes.status} - ${errMessage}`);
+    }
+    
+    const createData = await createRes.json();
+    if (createData.code !== 200 || !createData.data?.taskId) {
+        throw new Error(`Kie API Create Error: ${JSON.stringify(createData)}`);
+    }
+    
+    const taskId = createData.data.taskId;
+    
+    // 2. Poll Task Status
+    while (true) {
+        await new Promise(resolve => setTimeout(resolve, 3000)); // Poll every 3 seconds
+        
+        const pollRes = await fetch(`https://api.kie.ai/api/v1/jobs/recordInfo?taskId=${taskId}`, {
+            method: "GET",
+            headers: {
+                "Authorization": `Bearer ${KIE_API_KEY}`
+            }
+        });
+        
+        if (!pollRes.ok) {
+            continue; // Retry on transient HTTP errors
+        }
+        
+        const pollData = await pollRes.json();
+        
+        if (pollData.code === 200 && pollData.data) {
+            const state = pollData.data.state;
+            
+            if (state === "success") {
+                try {
+                    const resultJson = JSON.parse(pollData.data.resultJson);
+                    return resultJson.resultUrls[0];
+                } catch (e) {
+                    throw new Error(`Failed to parse result URL: ${pollData.data.resultJson}`);
+                }
+            } else if (state === "fail") {
+                throw new Error(`Task failed: ${pollData.data.failMsg}`);
+            }
+            // If "waiting", loop continues
+        }
+    }
+}
+
 export async function POST(req: Request) {
     try {
+        const supabase = getSupabaseClient();
+
+        // Get the authenticated user
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        if (authError || !user) {
+            return NextResponse.json(
+                { error: 'Authentication required. Please log in.' },
+                { status: 401 }
+            );
+        }
+
         const body = await req.json();
         const { storyText, style, characters, characterImage } = body;
 
-        // Build character list from the new format, or fallback to old format
+        // Build character list
         let characterList: CharacterData[] = [];
         if (Array.isArray(characters) && characters.length > 0) {
             characterList = characters;
@@ -47,14 +157,61 @@ export async function POST(req: Request) {
             );
         }
 
-        console.log(`Starting generation. Style: ${style}, Characters: ${characterList.length}`);
+        // Check credits
+        const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('credits')
+            .eq('id', user.id)
+            .single();
+
+        if (profileError || !profile) {
+            return NextResponse.json(
+                { error: 'Could not fetch user profile.' },
+                { status: 500 }
+            );
+        }
+
+        if (profile.credits <= 0) {
+            return NextResponse.json(
+                { error: 'No credits remaining. Please purchase a plan to generate comics.' },
+                { status: 403 }
+            );
+        }
+
+        // Create a creation record in Supabase
+        const { data: creation, error: createError } = await supabase
+            .from('creations')
+            .insert({
+                user_id: user.id,
+                title: storyText.substring(0, 50) + (storyText.length > 50 ? '...' : ''),
+                style: style,
+                story_text: storyText,
+                status: 'generating',
+                characters: characterList.map(c => ({
+                    name: c.name,
+                    role: c.role,
+                    gender: c.gender,
+                    age: c.age,
+                })),
+            })
+            .select()
+            .single();
+
+        if (createError || !creation) {
+            console.error('Error creating creation record:', createError);
+            return NextResponse.json(
+                { error: 'Failed to create generation record.' },
+                { status: 500 }
+            );
+        }
+
+        console.log(`Creation ${creation.id} started. Style: ${style}, Characters: ${characterList.length}`);
 
         // ========================================================
         // STEP 1: Generate a coherent story script via LLaMA
         // ========================================================
         console.log('Step 1: Generating story script with LLaMA...');
 
-        // Define stylistic keywords based on user selection
         let styleKeywords = '';
         let styleInstruction = '';
         if (style === 'manga') {
@@ -68,7 +225,6 @@ export async function POST(req: Request) {
             styleInstruction = 'comic (American-style comic book)';
         }
 
-        // Build a detailed character description string for LLaMA
         const characterDescriptions = characterList.map((c, i) => {
             return `Character ${i + 1}: "${c.name}" - Role: ${c.role}, Gender: ${c.gender}, Age: ${c.age}. A reference photo of this character is provided.`;
         }).join('\n');
@@ -114,7 +270,6 @@ Output the JSON array now:`;
             }
         );
 
-        // LLaMA returns an array of string chunks, join them
         let llamaText = '';
         if (Array.isArray(llamaOutput)) {
             llamaText = llamaOutput.join('');
@@ -124,7 +279,6 @@ Output the JSON array now:`;
 
         console.log('LLaMA raw output (first 500 chars):', llamaText.substring(0, 500));
 
-        // Parse the JSON array from LLaMA's output
         let pageDescriptions: string[] = [];
         try {
             const jsonMatch = llamaText.match(/\[[\s\S]*\]/);
@@ -135,7 +289,6 @@ Output the JSON array now:`;
             console.error('Failed to parse LLaMA output as JSON:', parseError);
         }
 
-        // Fallback: if parsing failed, use the story text directly
         if (!Array.isArray(pageDescriptions) || pageDescriptions.length < 11) {
             console.warn('LLaMA parsing failed or returned < 11 pages. Using fallback.');
             const charNames = characterList.map(c => c.name).join(' and ');
@@ -154,13 +307,12 @@ Output the JSON array now:`;
             ];
         }
 
-        // Ensure exactly 11 descriptions (1 cover + 10 pages)
         pageDescriptions = pageDescriptions.slice(0, 11);
         while (pageDescriptions.length < 11) {
             pageDescriptions.push(`A continuation comic page featuring ${characterList[0].name} in the story "${storyText}". Multiple panels with dialogue.`);
         }
 
-        console.log('Step 1 complete!', pageDescriptions.length, 'page descriptions generated (1 cover + 10 pages).');
+        console.log('Step 1 complete!', pageDescriptions.length, 'page descriptions generated.');
 
         // ========================================================
         // STEP 2: Generate images one by one with nano-banana-2
@@ -168,15 +320,12 @@ Output the JSON array now:`;
         console.log('Step 2: Generating images with nano-banana-2...');
 
         const generatedImages: string[] = [];
-
-        // Collect all character images for the image_input array
         const allCharacterImages = characterList.map(c => c.image);
 
         for (let i = 0; i < 11; i++) {
             const pageDesc = pageDescriptions[i];
             const isCover = i === 0;
 
-            // Construct the full prompt
             let fullPrompt = '';
             if (isCover) {
                 fullPrompt = `${styleKeywords}. A stunning comic book COVER PAGE illustration. ${pageDesc}. The characters must look exactly like the provided reference images. High quality, professional comic book cover design.`;
@@ -186,35 +335,39 @@ Output the JSON array now:`;
 
             console.log(`Generating page ${i === 0 ? 'COVER' : i}/10...`);
 
-            const output = await replicate.run(
-                "google/nano-banana-2",
-                {
-                    input: {
-                        prompt: fullPrompt,
-                        image_input: allCharacterImages,
-                        aspect_ratio: "3:4",
-                        output_format: "jpg"
-                    }
-                }
-            );
-
-            // With useFileOutput: false, output should be a plain URL string
-            let imageUrl = '';
-            if (typeof output === 'string') {
-                imageUrl = output;
-            } else if (output && typeof output === 'object' && 'url' in output) {
-                imageUrl = String((output as any).url());
-            } else {
-                imageUrl = String(output);
-            }
+            const imageUrl = await generateImageWithKie(fullPrompt, allCharacterImages);
 
             console.log(`Page ${i === 0 ? 'COVER' : i} generated: ${imageUrl.substring(0, 80)}...`);
             generatedImages.push(imageUrl);
+
+            // Save each page to Supabase as it's generated
+            await supabase
+                .from('creation_pages')
+                .insert({
+                    creation_id: creation.id,
+                    page_number: i,
+                    image_url: imageUrl,
+                });
         }
 
-        console.log('Generation complete!', generatedImages.length, 'images generated (1 cover + 10 pages).');
+        // Mark creation as completed
+        await supabase
+            .from('creations')
+            .update({ status: 'completed' })
+            .eq('id', creation.id);
 
-        return NextResponse.json({ images: generatedImages });
+        // Decrement user's credits
+        await supabase
+            .from('profiles')
+            .update({ credits: profile.credits - 1 })
+            .eq('id', user.id);
+
+        console.log('Generation complete!', generatedImages.length, 'images generated and saved to Supabase.');
+
+        return NextResponse.json({
+            images: generatedImages,
+            creationId: creation.id,
+        });
     } catch (error: any) {
         console.error('Error generating images:', error);
 

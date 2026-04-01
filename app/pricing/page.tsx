@@ -7,8 +7,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Lock, Check } from 'lucide-react';
 import Footer from '../../components/Footer';
 import LoadingPopup from '../../components/LoadingPopup';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function PricingPage() {
+    const { isLoggedIn, profile, signOut } = useAuth();
     const [selectedStyle, setSelectedStyle] = useState<string>('manga');
     const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'onetime'>('monthly');
     const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
@@ -93,11 +95,9 @@ export default function PricingPage() {
         };
     }, [isProfileDropdownOpen]);
 
-    const handleLogout = () => {
+    const handleLogout = async () => {
         setIsProfileDropdownOpen(false);
-        localStorage.removeItem('isLoggedIn');
-        // Redirect to homepage to show logged out state
-        window.location.href = '/';
+        await signOut();
     };
 
     const handlePlanSelect = async () => {
@@ -128,8 +128,14 @@ export default function PricingPage() {
             
             if (data.images) {
                 localStorage.setItem('generatedImages', JSON.stringify(data.images));
-                localStorage.removeItem('pendingGenerationData'); // Clean up
-                window.location.href = '/results';
+                localStorage.removeItem('pendingGenerationData');
+                // Redirect with creation ID if available
+                const creationId = data.creationId;
+                if (creationId) {
+                    window.location.href = `/results?id=${creationId}`;
+                } else {
+                    window.location.href = '/results';
+                }
             } else {
                 throw new Error(data.error || 'Unknown error');
             }
@@ -249,7 +255,7 @@ export default function PricingPage() {
                             <div className="absolute top-full mt-2 left-0 bg-white rounded-lg shadow-lg min-w-[240px] z-50 overflow-hidden">
                                 {/* Email Header */}
                                 <div className="px-4 py-3 bg-gray-50">
-                                    <p className="text-sm font-bold text-gray-800 truncate">user@example.com</p>
+                                    <p className="text-sm font-bold text-gray-800 truncate">{profile?.email || 'User'}</p>
                                 </div>
 
                                 {/* My Creations */}

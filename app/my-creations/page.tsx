@@ -1,71 +1,104 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Search, BookOpen, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Search, BookOpen, X, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import Header from '../../components/Header';
 import Footer from '../../components/Footer';
+import AuthPopup from '../../components/AuthPopup';
+import { useAuth } from '@/contexts/AuthContext';
+import { createClient } from '@/lib/supabase/client';
 
-// TODO: Replace with API call to fetch user's creations
-// NOTE: When API is connected, if this array is empty the "No Creations Yet" empty state will show automatically.
-const myCreations = [
-    {
-        id: '1',
-        title: 'THE TOWN HERO',
-        style: 'Comic',
-        issue: '#1',
-        pages: ['/images/feature-4-main.jpg', '/images/example-scroll-3.jpg', '/images/example-scroll-4.jpg', '/images/example-scroll-5.jpg'],
-        date: 'Oct 24, 2023',
-        status: 'completed'
-    },
-    {
-        id: '2',
-        title: 'THE UNCHARTED',
-        style: 'Manga',
-        issue: '#1',
-        pages: ['/images/feature-1-main.jpg', '/images/feature-2-main.jpg', '/images/feature-3-main.jpg'],
-        date: 'Nov 02, 2023',
-        status: 'completed'
-    },
-    {
-        id: '3',
-        title: 'CYBER CITY',
-        style: 'Manhwa',
-        issue: '#1',
-        pages: ['/images/feature-5-main.jpg', '/images/feature-4-main.jpg', '/images/feature-6-main.jpg'],
-        date: 'Dec 15, 2023',
-        status: 'completed'
-    },
-    {
-        id: '4',
-        title: 'MAGIC KINGDOM',
-        style: 'Manga',
-        issue: '#2',
-        pages: ['/images/feature-2-main.jpg', '/images/example-scroll-4.jpg', '/images/form-example-2.jpg'],
-        date: 'Jan 10, 2024',
-        status: 'completed'
-    }
-];
+interface CreationPage {
+    id: string;
+    page_number: number;
+    image_url: string;
+}
+
+interface Creation {
+    id: string;
+    title: string;
+    style: string;
+    story_text: string;
+    status: string;
+    characters: any;
+    created_at: string;
+    creation_pages: CreationPage[];
+}
 
 export default function MyCreationsPage() {
-    const [isLoggedIn, setIsLoggedIn] = useState(true);
-    const [availableCredits, setAvailableCredits] = useState(0); // TODO: Fetch from API
+    const { isLoggedIn, credits, signOut } = useAuth();
+    const [isAuthPopupOpen, setIsAuthPopupOpen] = useState(false);
+
+    const [myCreations, setMyCreations] = useState<Creation[]>([]);
+    const [isLoadingCreations, setIsLoadingCreations] = useState(true);
+    const [searchQuery, setSearchQuery] = useState('');
 
     // Reading Modal State
-    const [selectedCreation, setSelectedCreation] = useState<typeof myCreations[0] | null>(null);
+    const [selectedCreation, setSelectedCreation] = useState<Creation | null>(null);
     const [currentPageIndex, setCurrentPageIndex] = useState(0);
 
-    const handleLogout = () => {
-        setIsLoggedIn(false);
-        localStorage.removeItem('isLoggedIn');
-        window.location.href = '/';
+    const supabase = createClient();
+
+    // Fetch user creations from Supabase
+    useEffect(() => {
+        const fetchCreations = async () => {
+            setIsLoadingCreations(true);
+            try {
+                const { data, error } = await supabase
+                    .from('creations')
+                    .select(`
+                        *,
+                        creation_pages (
+                            id,
+                            page_number,
+                            image_url
+                        )
+                    `)
+                    .eq('status', 'completed')
+                    .order('created_at', { ascending: false });
+
+                if (error) {
+                    console.error('Error fetching creations:', error);
+                } else {
+                    // Sort pages by page_number within each creation
+                    const sortedCreations = (data || []).map((creation: any) => ({
+                        ...creation,
+                        creation_pages: (creation.creation_pages || []).sort(
+                            (a: CreationPage, b: CreationPage) => a.page_number - b.page_number
+                        ),
+                    }));
+                    setMyCreations(sortedCreations);
+                }
+            } catch (err) {
+                console.error('Error fetching creations:', err);
+            } finally {
+                setIsLoadingCreations(false);
+            }
+        };
+
+        if (isLoggedIn) {
+            fetchCreations();
+        } else {
+            setIsLoadingCreations(false);
+        }
+    }, [isLoggedIn, supabase]);
+
+    const handleLogout = async () => {
+        await signOut();
     };
 
-    const openReadingModal = (creation: typeof myCreations[0]) => {
+    // Filter creations based on search query
+    const filteredCreations = myCreations.filter(creation =>
+        creation.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        creation.style.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    const openReadingModal = (creation: Creation) => {
         setSelectedCreation(creation);
         setCurrentPageIndex(0);
-        document.body.style.overflow = 'hidden'; // Prevent background scrolling
+        document.body.style.overflow = 'hidden';
     };
 
     const closeReadingModal = () => {
@@ -75,7 +108,7 @@ export default function MyCreationsPage() {
 
     const goNextPage = (e: React.MouseEvent) => {
         e.stopPropagation();
-        if (selectedCreation && currentPageIndex < selectedCreation.pages.length - 1) {
+        if (selectedCreation && currentPageIndex < selectedCreation.creation_pages.length - 1) {
             setCurrentPageIndex(prev => prev + 1);
         }
     };
@@ -85,6 +118,14 @@ export default function MyCreationsPage() {
         if (currentPageIndex > 0) {
             setCurrentPageIndex(prev => prev - 1);
         }
+    };
+
+    const formatDate = (dateString: string) => {
+        return new Date(dateString).toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+        });
     };
 
     return (
@@ -101,10 +142,8 @@ export default function MyCreationsPage() {
             }}
         >
             <Header
-                isLoggedIn={isLoggedIn}
-                onAuthClick={() => { }}
+                onAuthClick={() => setIsAuthPopupOpen(true)}
                 onLogout={handleLogout}
-                availableCredits={availableCredits}
             />
 
             <main className="flex-1 max-w-7xl mx-auto px-6 py-12 w-full">
@@ -128,12 +167,14 @@ export default function MyCreationsPage() {
                         </motion.div>
                     </div>
 
-                    {/* Search / Filter (Decorative for now) */}
+                    {/* Search / Filter */}
                     <div className="flex items-center gap-2">
                         <div className="relative group">
                             <input
                                 type="text"
                                 placeholder="Search..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
                                 className="w-full md:w-64 pl-10 pr-4 py-3 bg-white border-[3px] border-black rounded-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] font-bold text-sm focus:outline-none focus:ring-4 focus:ring-black/5 transition-all"
                             />
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
@@ -141,8 +182,14 @@ export default function MyCreationsPage() {
                     </div>
                 </div>
 
-                {/* Library Grid or Empty State */}
-                {myCreations.length === 0 ? (
+                {/* Loading State */}
+                {isLoadingCreations ? (
+                    <div className="flex flex-col items-center justify-center p-12">
+                        <Loader2 className="w-12 h-12 text-[#6366f1] animate-spin mb-4" />
+                        <p className="text-lg font-bold text-gray-600">Loading your creations...</p>
+                    </div>
+                ) : filteredCreations.length === 0 ? (
+                    /* Empty State */
                     <div className="flex flex-col items-center justify-center p-12 bg-white border-[4px] border-black rounded-3xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] max-w-2xl mx-auto text-center mt-12">
                         <div className="w-24 h-24 bg-gray-100 border-[4px] border-black rounded-full flex items-center justify-center shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] mb-6">
                             <BookOpen className="w-10 h-10 text-gray-400" />
@@ -164,6 +211,7 @@ export default function MyCreationsPage() {
                         </motion.a>
                     </div>
                 ) : (
+                    /* Creation Grid */
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
                         {/* Create New Card */}
                         <motion.a
@@ -172,7 +220,6 @@ export default function MyCreationsPage() {
                             whileTap={{ scale: 0.98 }}
                             className="group flex flex-col items-center justify-center p-8 min-h-[400px] bg-[#facc15] border-[4px] border-black rounded-2xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] transition-all cursor-pointer relative overflow-hidden"
                         >
-                            {/* Background comic dot pattern overlay */}
                             <div className="absolute inset-0 opacity-10" style={{
                                 backgroundImage: 'radial-gradient(black 15%, transparent 16%)',
                                 backgroundSize: '12px 12px',
@@ -186,46 +233,58 @@ export default function MyCreationsPage() {
                             </h3>
                         </motion.a>
 
-                    {/* Creation Cards */}
-                    {myCreations.map((creation, index) => (
-                        <motion.div
-                            key={creation.id}
-                            onClick={() => openReadingModal(creation)}
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.5, delay: index * 0.1 }}
-                            whileHover={{ y: -8 }}
-                            className="group relative flex flex-col bg-white border-[4px] border-black rounded-2xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] transition-all overflow-hidden cursor-pointer aspect-[2/3]"
-                        >
-                            {/* Image Container */}
-                            <div className="relative w-full h-full overflow-hidden">
-                                <Image
-                                    src={creation.pages[0]} // Use first page as cover
-                                    alt={creation.title}
-                                    fill
-                                    className="object-cover group-hover:scale-105 transition-transform duration-500"
-                                />
-                                {/* Top Badges (Only style now) */}
-                                <div className="absolute top-4 left-4 flex z-10">
-                                    <span className="bg-white px-3 py-1 font-black text-xs uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                                        {creation.style}
-                                    </span>
-                                </div>
+                        {/* Creation Cards */}
+                        {filteredCreations.map((creation, index) => (
+                            <motion.div
+                                key={creation.id}
+                                onClick={() => openReadingModal(creation)}
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.5, delay: index * 0.1 }}
+                                whileHover={{ y: -8 }}
+                                className="group relative flex flex-col bg-white border-[4px] border-black rounded-2xl shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] transition-all overflow-hidden cursor-pointer aspect-[2/3]"
+                            >
+                                {/* Image Container */}
+                                <div className="relative w-full h-full overflow-hidden">
+                                    {creation.creation_pages.length > 0 ? (
+                                        <img
+                                            src={creation.creation_pages[0].image_url}
+                                            alt={creation.title}
+                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                        />
+                                    ) : (
+                                        <div className="w-full h-full bg-gray-200 flex items-center justify-center">
+                                            <BookOpen className="w-16 h-16 text-gray-400" />
+                                        </div>
+                                    )}
+                                    {/* Top Badges */}
+                                    <div className="absolute top-4 left-4 flex gap-2 z-10">
+                                        <span className="bg-white px-3 py-1 font-black text-xs uppercase border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                                            {creation.style}
+                                        </span>
+                                    </div>
 
-                                {/* Dark Gradient Overlay at Bottom for Buttons */}
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                                
-                                {/* Bottom Action Area */}
-                                <div className="absolute bottom-4 left-4 right-4 z-10 flex flex-col gap-3 translate-y-8 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300">
-                                    <div className="w-full py-2 bg-[#facc15] text-black font-black text-sm uppercase border-[3px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex items-center justify-center gap-2">
-                                        <BookOpen className="w-4 h-4" />
-                                        Read Now
+                                    {/* Date Badge */}
+                                    <div className="absolute top-4 right-4 z-10">
+                                        <span className="bg-black/70 text-white px-2 py-1 font-bold text-xs rounded">
+                                            {formatDate(creation.created_at)}
+                                        </span>
+                                    </div>
+
+                                    {/* Dark Gradient Overlay at Bottom for Buttons */}
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                                    
+                                    {/* Bottom Action Area */}
+                                    <div className="absolute bottom-4 left-4 right-4 z-10 flex flex-col gap-3 translate-y-8 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300">
+                                        <div className="w-full py-2 bg-[#facc15] text-black font-black text-sm uppercase border-[3px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex items-center justify-center gap-2">
+                                            <BookOpen className="w-4 h-4" />
+                                            Read Now
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        </motion.div>
-                    ))}
-                </div>
+                            </motion.div>
+                        ))}
+                    </div>
                 )}
             </main>
 
@@ -249,7 +308,7 @@ export default function MyCreationsPage() {
 
                         {/* Page Counter */}
                         <div className="absolute top-6 left-6 z-[110] bg-white text-black px-4 py-2 rounded-full border-[3px] border-black font-black text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                            PAGE {currentPageIndex + 1} / {selectedCreation.pages.length}
+                            PAGE {currentPageIndex + 1} / {selectedCreation.creation_pages.length}
                         </div>
 
                         {/* Comic Reader Container */}
@@ -282,11 +341,10 @@ export default function MyCreationsPage() {
                                         transition={{ duration: 0.2 }}
                                         className="relative w-full h-full rounded-lg overflow-hidden"
                                     >
-                                        <Image
-                                            src={selectedCreation.pages[currentPageIndex]}
+                                        <img
+                                            src={selectedCreation.creation_pages[currentPageIndex]?.image_url}
                                             alt={`Page ${currentPageIndex + 1}`}
-                                            fill
-                                            className="object-contain"
+                                            className="w-full h-full object-contain"
                                         />
                                     </motion.div>
                                 </AnimatePresence>
@@ -295,9 +353,9 @@ export default function MyCreationsPage() {
                             {/* Navigation Arrow Right */}
                             <button
                                 onClick={goNextPage}
-                                disabled={currentPageIndex === selectedCreation.pages.length - 1}
+                                disabled={currentPageIndex === selectedCreation.creation_pages.length - 1}
                                 className={`absolute right-0 z-20 md:-right-16 p-4 rounded-full border-[3px] border-black text-white hover:scale-110 transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${
-                                    currentPageIndex === selectedCreation.pages.length - 1 
+                                    currentPageIndex === selectedCreation.creation_pages.length - 1 
                                         ? 'bg-gray-400 cursor-not-allowed opacity-50' 
                                         : 'bg-black hover:bg-gray-800'
                                 }`}
@@ -309,6 +367,11 @@ export default function MyCreationsPage() {
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            <AuthPopup
+                isOpen={isAuthPopupOpen}
+                onClose={() => setIsAuthPopupOpen(false)}
+            />
 
             <Footer />
         </div>

@@ -474,8 +474,41 @@ export default function Hero() {
 
           {/* Description */}
           <p className="text-base text-gray-700 leading-relaxed max-w-xl mx-auto">
-            Create your own comic book and manga online with our AI comic generator. Choose from multiple art styles: manga, webtoon, superhero, and more. Turn your ideas into professional comic strips in minutes. Whether you want to create a romantic manga, design superhero comics, or bring your stories to life, our AI comic maker generates stunning panels instantly. No drawing skills required!
+            Create stunning comics, webtoons, and manga in minutes with our AI generator. Choose your style—from superhero to romantic manga—and bring your professional comic strips to life instantly. No drawing skills required!
           </p>
+
+          {/* Mobile CTA and Marquee */}
+          <div className="flex flex-col items-center lg:hidden w-full mt-8 overflow-hidden space-y-6">
+            <button 
+              onClick={scrollToForm}
+              className="px-6 py-4 bg-[#facc15] text-black font-black text-xl border-[4px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center gap-2 rounded-xl"
+            >
+              👇 Create your comic book
+            </button>
+
+            <div className="w-[100vw] relative left-1/2 -translate-x-1/2 px-4 overflow-hidden py-4 -mb-4">
+              <div className="flex w-full">
+                <motion.div
+                  className="flex gap-4 pr-4 min-w-max"
+                  animate={{ x: "-50%" }}
+                  transition={{ repeat: Infinity, ease: "linear", duration: 15 }}
+                >
+                  {[...examples, ...examples, ...examples, ...examples].map((ex, index) => {
+                    const i = ex.id;
+                    return (
+                      <div 
+                        key={`${index}-${ex.id}`} 
+                        className="w-[140px] h-[100px] bg-white border-[3px] border-black flex-shrink-0 flex items-center justify-center relative overflow-hidden rounded-lg shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]"
+                      >
+                        <div className={`absolute inset-0 bg-gradient-to-br ${i === 1 ? 'from-orange-200 to-orange-300' : i === 2 ? 'from-blue-200 to-blue-300' : i === 3 ? 'from-purple-200 to-purple-300' : 'from-pink-200 to-pink-300'} opacity-50`}></div>
+                        <span className="text-4xl z-10">{['🎬', '🦸‍♂️', '🎇', '🌅'][i-1]}</span>
+                      </div>
+                    );
+                  })}
+                </motion.div>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Form and Carousel Grid */}
@@ -738,8 +771,8 @@ export default function Hero() {
           </div>
 
 
-          {/* Right Column - Carousel (First on mobile) */}
-          <div className="order-1 lg:order-2">
+          {/* Right Column - Carousel (Hidden on mobile as we now have the marquee) */}
+          <div className="hidden lg:block lg:order-2">
             {/* Example Carousel - Auto-scrolling */}
             <div className="relative bg-white border-[4px] border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-4 overflow-hidden rounded-xl">
 
