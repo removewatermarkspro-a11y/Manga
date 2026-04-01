@@ -299,53 +299,54 @@ export async function POST(req: Request) {
         }
 
         // ========================================================
-        // STEP 1: Generate structured story scenes via LLaMA 70B
+        // STEP 1: LLaMA 70B generates a full comic script
         // ========================================================
-        console.log('Step 1: Generating story scenes with LLaMA 70B...');
+        console.log('Step 1: Generating full comic script with LLaMA 70B...');
 
         let styleKeywords = '';
         let styleInstruction = '';
         if (style === 'manga') {
-            styleKeywords = 'black and white manga style, Japanese comic, dynamic ink lines, screentones, high contrast';
+            styleKeywords = 'black and white manga style, Japanese comic, dynamic ink lines, screentones, high contrast, speech bubbles';
             styleInstruction = 'manga';
         } else if (style === 'manhwa') {
-            styleKeywords = 'full color Korean webtoon manhwa style, polished digital painting, vibrant colors';
+            styleKeywords = 'full color Korean webtoon manhwa, polished digital art, vibrant colors, speech bubbles';
             styleInstruction = 'manhwa';
         } else if (style === 'comic') {
-            styleKeywords = 'American comic book style, bold outlines, vibrant colors, halftone dots';
+            styleKeywords = 'American comic book, bold outlines, vibrant colors, halftone dots, speech bubbles';
             styleInstruction = 'comic book';
         }
 
         const characterNames = characterList.map(c => c.name).join(' and ');
-        const characterSummary = characterList.map(c => `${c.name} (${c.role})`).join(', ');
+        const characterRoles = characterList.map(c => `${c.name} is the ${c.role}`).join('. ');
 
-        // LLaMA generates STRUCTURED SCENE DATA — we build the Kie prompts ourselves
-        const llamaSystemPrompt = `You write story scenes for a ${styleInstruction} comic. Output ONLY a valid JSON array of 11 objects. No markdown, no code fences, no explanation. Just the raw JSON array.`;
+        // LLaMA writes a natural-language visual script — NOT JSON
+        const llamaSystemPrompt = `You are a ${styleInstruction} comic book artist describing exactly what to draw on each page. Write vivid, visual descriptions. Focus on what the reader SEES: characters, poses, expressions, backgrounds, lighting, and dialogue in speech bubbles. Do NOT write narrative or plot summaries — describe images.`;
 
-        const llamaUserPrompt = `Write 11 scenes for a ${styleInstruction} comic about: "${storyText}"
-Characters: ${characterSummary}
+        const llamaUserPrompt = `Write a visual script for an 11-page ${styleInstruction} comic book.
 
-Output a JSON array of 11 objects. Each object has these fields:
-- "visual": what we SEE in one sentence (max 20 words). Be specific: location, action, time of day.
-- "emotion": the main character's emotion in one word (happy, scared, angry, surprised, sad, determined, etc.)
-- "dialogue": a short speech bubble text (max 8 words). Use empty string "" for cover.
-- "action": what the character is physically doing in one sentence (max 15 words)
+STORY: "${storyText}"
+CHARACTERS: ${characterRoles}
 
-Scene 0 = cover (dramatic pose, no panels).
-Scenes 1-2 = introduction.
-Scenes 3-4 = conflict rises.
-Scenes 5-6 = twist.
-Scenes 7-8 = climax.
-Scenes 9-10 = resolution.
+Write your script using this EXACT format (one description per page):
 
-Example output:
-[
-  {"visual":"${characterNames} standing on a rooftop at sunset over the city","emotion":"determined","dialogue":"","action":"standing heroically with arms crossed"},
-  {"visual":"a small coffee shop on a rainy morning, warm lighting inside","emotion":"nervous","dialogue":"Something feels wrong today","action":"sitting at a table looking out the window"},
-  {"visual":"a dark alley at night with neon signs reflecting on wet ground","emotion":"scared","dialogue":"Who's there?","action":"turning around quickly hearing a noise"}
-]
+PAGE 0: [Cover page — single dramatic illustration of ${characterNames} with the title "${storyText}" in large stylized text. No panels.]
+PAGE 1: [Opening scene — introduce the characters and setting]
+PAGE 2: [Continue introduction]
+PAGE 3: [A problem or conflict appears]
+PAGE 4: [Tension grows]
+PAGE 5: [A twist or surprising turn]
+PAGE 6: [Characters react to the twist]
+PAGE 7: [The biggest challenge — climax begins]
+PAGE 8: [Peak action moment]
+PAGE 9: [Resolution — the conflict is resolved]
+PAGE 10: [Ending — final scene, characters at peace]
 
-Now write all 11 scenes for "${storyText}". Output the JSON array:`;
+For each page, write 2-3 sentences describing:
+- The SETTING (where are we? what time of day? what's the atmosphere?)
+- The CHARACTERS (what are ${characterNames} doing? their pose? their face expression?)
+- The DIALOGUE (what do they say? write the exact speech bubble text in quotes)
+
+Keep each page description under 80 words. Be specific and visual.`;
 
         const llamaOutput = await replicate.run(
             "meta/meta-llama-3-70b-instruct",
@@ -353,7 +354,7 @@ Now write all 11 scenes for "${storyText}". Output the JSON array:`;
                 input: {
                     prompt: llamaUserPrompt,
                     system_prompt: llamaSystemPrompt,
-                    max_tokens: 2000,
+                    max_tokens: 2500,
                     temperature: 0.7,
                     top_p: 0.9,
                 }
@@ -367,78 +368,45 @@ Now write all 11 scenes for "${storyText}". Output the JSON array:`;
             llamaText = String(llamaOutput);
         }
 
-        console.log('LLaMA raw output (first 800 chars):', llamaText.substring(0, 800));
+        console.log('=== LLAMA FULL SCRIPT ===');
+        console.log(llamaText);
+        console.log('=========================');
 
-        // Parse structured scenes from LLaMA
-        interface SceneData {
-            visual: string;
-            emotion: string;
-            dialogue: string;
-            action: string;
-        }
+        // Parse the script by splitting on "PAGE X:" markers
+        const pageDescriptions: string[] = [];
+        for (let p = 0; p <= 10; p++) {
+            const marker = `PAGE ${p}:`;
+            const nextMarker = p < 10 ? `PAGE ${p + 1}:` : null;
+            const startIdx = llamaText.indexOf(marker);
 
-        let scenes: SceneData[] = [];
-        try {
-            const jsonMatch = llamaText.match(/\[[\s\S]*\]/);
-            if (jsonMatch) {
-                scenes = JSON.parse(jsonMatch[0]);
-            }
-        } catch (parseError) {
-            console.error('Failed to parse LLaMA scenes:', parseError);
-        }
-
-        // Fallback if LLaMA failed
-        if (!Array.isArray(scenes) || scenes.length < 11) {
-            console.warn(`LLaMA returned ${scenes?.length || 0} scenes. Using fallback.`);
-            scenes = [
-                { visual: `${characterNames} in a dramatic heroic pose`, emotion: 'determined', dialogue: '', action: 'standing heroically' },
-                { visual: `a quiet neighborhood at dawn`, emotion: 'calm', dialogue: 'Today is the day', action: 'walking down a street' },
-                { visual: `a busy marketplace with crowds`, emotion: 'curious', dialogue: 'Look at this', action: 'pointing at something interesting' },
-                { visual: `a dark room with a single light`, emotion: 'surprised', dialogue: 'What is this?', action: 'discovering a hidden object' },
-                { visual: `a confrontation in an open field`, emotion: 'angry', dialogue: 'You lied to me!', action: 'shouting and pointing accusingly' },
-                { visual: `a forest path at twilight`, emotion: 'confused', dialogue: 'Nothing makes sense', action: 'walking alone looking lost' },
-                { visual: `a rooftop under a stormy sky`, emotion: 'scared', dialogue: 'We have to go now!', action: 'running towards the edge' },
-                { visual: `an epic battle scene with debris flying`, emotion: 'fierce', dialogue: 'I will not give up!', action: 'fighting with full intensity' },
-                { visual: `the aftermath of a battle, dust settling`, emotion: 'exhausted', dialogue: 'Is it over?', action: 'kneeling on the ground breathing hard' },
-                { visual: `a peaceful sunset over a calm lake`, emotion: 'relieved', dialogue: 'We did it', action: 'sitting together watching the sunset' },
-                { visual: `a bright new morning, birds flying`, emotion: 'happy', dialogue: 'A new beginning', action: 'smiling and walking towards the horizon' },
-            ];
-        }
-
-        // Ensure exactly 11 scenes
-        scenes = scenes.slice(0, 11);
-        while (scenes.length < 11) {
-            scenes.push({ visual: `a scene from the story "${storyText}"`, emotion: 'neutral', dialogue: '', action: `${characterNames} continuing the adventure` });
-        }
-
-        // BUILD Kie-optimized prompts programmatically from structured scenes
-        const pageDescriptions: string[] = scenes.map((scene, i) => {
-            const isCover = i === 0;
-            if (isCover) {
-                // Cover: single illustration, title text, no panels
-                return `${styleKeywords}. Single dramatic illustration, NO panels. ${characterNames} ${scene.action}, looking ${scene.emotion}. ${scene.visual}. Title text "${storyText}" in large bold stylized letters at the top. Cinematic lighting, epic composition.`;
+            if (startIdx !== -1) {
+                const contentStart = startIdx + marker.length;
+                const endIdx = nextMarker ? llamaText.indexOf(nextMarker) : llamaText.length;
+                const desc = llamaText.substring(contentStart, endIdx !== -1 ? endIdx : llamaText.length).trim();
+                pageDescriptions.push(desc);
             } else {
-                // Story page: comic page with panels
-                const dialoguePart = scene.dialogue ? ` Speech bubble says: "${scene.dialogue}".` : '';
-                return `${styleKeywords}. Comic book page with 3 panels and speech bubbles. ${characterNames} ${scene.action}. Expression: ${scene.emotion}. Setting: ${scene.visual}.${dialoguePart} Professional comic page layout.`;
+                // Fallback for missing pages
+                pageDescriptions.push(
+                    p === 0
+                        ? `A dramatic cover illustration showing ${characterNames} in a heroic pose. The title "${storyText}" appears in large bold stylized text.`
+                        : `A ${styleInstruction} page showing ${characterNames} in an exciting scene from the story "${storyText}".`
+                );
             }
-        });
+        }
 
-        console.log('Step 1 complete!', pageDescriptions.length, 'Kie prompts built from scenes.');
-        pageDescriptions.forEach((p, i) => console.log(`  Page ${i}: ${p.substring(0, 120)}...`));
+        console.log(`Step 1 complete: ${pageDescriptions.length} page descriptions parsed from script.`);
 
         // ========================================================
         // STEP 2: Upload character images to get public URLs
         // ========================================================
         console.log('Step 2: Uploading character images to imgbb...');
 
-        // Kie's image_input ONLY accepts public HTTP URLs
         const allCharacterImageUrls: string[] = [];
         for (let ci = 0; ci < characterList.length; ci++) {
             const c = characterList[ci];
             try {
                 if (c.image.startsWith('data:image') || c.image.startsWith('/9j/')) {
-                    console.log(`Uploading character ${ci + 1} (${c.name}) image to imgbb...`);
+                    console.log(`Uploading character ${ci + 1} (${c.name}) to imgbb...`);
                     const publicUrl = await uploadBase64ToPublicUrl(c.image);
                     allCharacterImageUrls.push(publicUrl);
                 } else if (c.image.startsWith('http')) {
@@ -447,25 +415,41 @@ Now write all 11 scenes for "${storyText}". Output the JSON array:`;
                     console.warn(`Character ${c.name}: unknown image format, skipping`);
                 }
             } catch (uploadErr: any) {
-                console.error(`Failed to upload image for ${c.name}: ${uploadErr.message}. Proceeding without this image.`);
+                console.error(`Failed to upload image for ${c.name}: ${uploadErr.message}`);
             }
         }
 
-        console.log(`Step 2 complete: ${allCharacterImageUrls.length} public URL(s) ready.`);
+        console.log(`Step 2 complete: ${allCharacterImageUrls.length} photo URL(s) ready.`);
 
         // ========================================================
-        // STEP 3: Stream image generation via SSE
+        // STEP 3: Build 11 Kie prompts from the script
         // ========================================================
-        console.log('Step 3: Streaming images with nano-banana-2...');
+        const kiePrompts: string[] = pageDescriptions.map((desc, i) => {
+            const charRefInstruction = `The characters in this image must look exactly like the people in the provided reference photos. Use the reference photos to reproduce their exact face, hair, skin tone, and features.`;
 
-        // Capture variables in closure for stream
+            if (i === 0) {
+                // Cover page
+                return `${styleKeywords}. ${desc} ${charRefInstruction}`;
+            } else {
+                // Story page
+                return `${styleKeywords}. Full ${styleInstruction} page with panels and speech bubbles. ${desc} ${charRefInstruction}`;
+            }
+        });
+
+        console.log('Step 3: 11 Kie prompts built.');
+        kiePrompts.forEach((p, i) => console.log(`  Prompt ${i} (${p.length} chars): ${p.substring(0, 150)}...`));
+
+        // ========================================================
+        // STEP 4: Stream image generation via SSE
+        // ========================================================
+        console.log('Step 4: Streaming images with nano-banana-2...');
+
         const _supabase = supabase;
         const _creationId = creationId;
         const _profile = profile;
         const _user = user;
         const _isTesting = isTesting;
 
-        // Return a ReadableStream (SSE) so each image is sent to the client immediately
         const stream = new ReadableStream({
             async start(controller) {
                 const encode = (obj: object) => {
@@ -477,15 +461,14 @@ Now write all 11 scenes for "${storyText}". Output the JSON array:`;
 
                 try {
                     for (let i = 0; i < 11; i++) {
-                        const fullPrompt = pageDescriptions[i];
+                        const prompt = kiePrompts[i];
 
-                        // Log each prompt
-                        console.log(`\n=== PAGE ${i === 0 ? 'COVER' : i} PROMPT (${fullPrompt.length} chars) ===`);
-                        console.log(fullPrompt);
-                        console.log('=================================================');
+                        console.log(`\n=== GENERATING PAGE ${i === 0 ? 'COVER' : i} ===`);
+                        console.log(`Prompt (${prompt.length} chars): ${prompt.substring(0, 300)}...`);
+                        console.log(`Image refs: ${allCharacterImageUrls.length} photos`);
 
+                        const imageUrl = await generateImageWithKie(prompt, allCharacterImageUrls);
 
-                        const imageUrl = await generateImageWithKie(fullPrompt, allCharacterImageUrls);
 
                         console.log(`Page ${i === 0 ? 'COVER' : i} generated: ${imageUrl.substring(0, 80)}...`);
                         generatedImages.push(imageUrl);
