@@ -450,13 +450,13 @@ export default function PricingPage() {
             </header>
 
             {/* Main Content */}
-            <main className="max-w-7xl mx-auto px-4 py-4 md:py-12 flex flex-col min-h-[calc(100vh-140px)]">
-                <div className="flex flex-col xl:flex-row gap-6 xl:gap-8 xl:items-stretch w-full flex-1">
+            <main className="max-w-7xl mx-auto px-4 py-4 md:py-6 flex flex-col min-h-[calc(100vh-140px)]">
+                <div className="flex flex-col xl:flex-row gap-4 xl:gap-6 xl:items-stretch w-full flex-1">
 
                 {/* Left Column: Title & Preview */}
                 <div className="w-full xl:w-[35%] flex flex-col items-center xl:items-start max-w-2xl mx-auto xl:mx-0 h-full">
                     {/* Stylized Title Section */}
-                    <div className="text-center xl:text-left mb-6 md:mb-10 w-full flex flex-col items-center xl:items-start xl:h-[240px] justify-end">
+                    <div className="text-center xl:text-left mb-4 md:mb-6 w-full flex flex-col items-center xl:items-start justify-end xl:min-h-[150px]">
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -475,7 +475,7 @@ export default function PricingPage() {
                 </div>
 
                 {/* Results Section */}
-                <div className="w-full flex-1 flex flex-col justify-center relative bg-white border-[3px] md:border-[4px] border-black rounded-2xl md:rounded-3xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] md:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] py-4 px-2 md:p-8 overflow-hidden h-full">
+                <div className="w-full flex-1 flex flex-col justify-center relative bg-white border-[3px] md:border-[4px] border-black rounded-2xl md:rounded-3xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] md:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] py-3 px-2 md:p-6 overflow-hidden min-h-[250px] md:min-h-0">
                     {/* Background Image */}
                     <div className="absolute inset-0 pointer-events-none">
                         <Image
@@ -516,20 +516,20 @@ export default function PricingPage() {
                 </div>
 
                 {/* Right Column: Pricing Section */}
-                <div id="pricing" className="w-full xl:w-[65%] flex flex-col max-w-5xl mx-auto xl:mx-0 mt-8 xl:mt-0 relative h-full">
-                    <div className="text-center mb-6 md:mb-10 flex flex-col xl:h-[240px] justify-end mt-4 md:mt-0">
-                        <h3 className="text-2xl md:text-3xl font-black text-black font-display mb-2 md:mb-4">
+                <div id="pricing" className="w-full xl:w-[65%] flex flex-col max-w-5xl mx-auto xl:mx-0 mt-4 xl:mt-0 relative h-full">
+                    <div className="text-center mb-4 md:mb-6 flex flex-col justify-end xl:min-h-[150px] mt-2 md:mt-0">
+                        <h3 className="text-xl md:text-3xl font-black text-black font-display mb-1 md:mb-3">
                             Choose your package <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#6366f1] to-[#8b5cf6]">now:</span>
                         </h3>
                     </div>
 
                     {/* Pricing Grid */}
-                    <div className="grid md:grid-cols-2 gap-4 lg:gap-8 max-w-4xl mx-auto w-full xl:px-0 flex-1">
+                    <div className="grid md:grid-cols-2 gap-3 lg:gap-6 max-w-4xl mx-auto w-full xl:px-0 flex-1">
                         {/* Monthly Plan - 10 Comics */}
                         <motion.div
                             whileHover={{ scale: 1.02, y: -5 }}
                             onClick={() => setSelectedPlan('monthly')}
-                            className={`relative border-[4px] border-black rounded-3xl p-6 lg:p-8 cursor-pointer transition-all ${selectedPlan === 'monthly' ? 'bg-[#facc15] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]' : 'bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]'} hover:scale-[1.02] hover:-translate-y-1 z-10 flex flex-col h-full`}
+                            className={`relative border-[4px] border-black rounded-3xl p-5 lg:p-6 cursor-pointer transition-all ${selectedPlan === 'monthly' ? 'bg-[#facc15] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]' : 'bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]'} hover:scale-[1.02] hover:-translate-y-1 z-10 flex flex-col h-full`}
                         >
                             <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-black text-white px-4 py-1 rounded-full text-xs font-bold border-2 border-white">
                                 PREFERRED
@@ -567,7 +567,7 @@ export default function PricingPage() {
                                 </div>
                                 <button 
                                     onClick={(e) => { e.stopPropagation(); handlePlanSelect(); }}
-                                    className="w-full py-3 rounded-xl border-[3px] border-black font-black text-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-transform active:translate-y-1 active:shadow-none bg-white mt-auto"
+                                    className="w-full py-2.5 rounded-xl border-[3px] border-black font-black text-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-transform active:translate-y-1 active:shadow-none bg-white mt-4"
                                 >
                                     Get Started
                                 </button>
@@ -578,7 +578,7 @@ export default function PricingPage() {
                         <motion.div
                             whileHover={{ scale: 1.02, y: -5 }}
                             onClick={() => setSelectedPlan('onetime')}
-                            className={`relative border-[4px] border-black rounded-3xl p-6 lg:p-8 cursor-pointer transition-all ${selectedPlan === 'onetime' ? 'bg-[#facc15] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]' : 'bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]'} hover:scale-[1.02] hover:-translate-y-1 flex flex-col h-full`}
+                            className={`relative border-[4px] border-black rounded-3xl p-5 lg:p-6 cursor-pointer transition-all ${selectedPlan === 'onetime' ? 'bg-[#facc15] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]' : 'bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]'} hover:scale-[1.02] hover:-translate-y-1 flex flex-col h-full`}
                         >
                             <div className="text-center flex flex-col h-full justify-between">
                                 <div>
@@ -613,7 +613,7 @@ export default function PricingPage() {
                                 </div>
                                 <button 
                                     onClick={(e) => { e.stopPropagation(); handlePlanSelect(); }}
-                                    className="w-full py-3 rounded-xl border-[3px] border-black font-black text-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-transform active:translate-y-1 active:shadow-none bg-white mt-auto"
+                                    className="w-full py-2.5 rounded-xl border-[3px] border-black font-black text-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-transform active:translate-y-1 active:shadow-none bg-white mt-4"
                                 >
                                     Get Started
                                 </button>
@@ -624,8 +624,8 @@ export default function PricingPage() {
             </div>
 
             {/* Cancel Anytime (Below Columns) */}
-            <div className="mt-8 md:mt-12 mb-4 text-center w-full">
-                <div className="hidden md:inline-flex items-center gap-2 bg-white/90 px-6 py-3 rounded-full border-[2px] border-black/10 shadow-sm mx-auto text-sm text-black font-bold whitespace-nowrap">
+            <div className="mt-6 md:mt-8 mb-4 text-center w-full">
+                <div className="hidden md:inline-flex items-center gap-2 bg-white/90 px-6 py-2.5 rounded-full border-[2px] border-black/10 shadow-sm mx-auto text-sm text-black font-bold whitespace-nowrap">
                     <Check className="w-4 h-4 text-green-600" />
                     Cancel anytime <span className="text-gray-400 mx-1">•</span>
                     <Check className="w-4 h-4 text-green-600" />

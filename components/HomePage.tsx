@@ -18,7 +18,7 @@ import { useAuth } from '@/contexts/AuthContext';
 type StyleType = 'comic' | 'manga' | 'manhwa';
 
 export default function HomePage() {
-  const [selectedStyle, setSelectedStyle] = useState<StyleType | null>(null);
+  const [selectedStyle, setSelectedStyle] = useState<StyleType | null>('comic');
   const [currentExample, setCurrentExample] = useState<number>(0);
   const [openFAQ, setOpenFAQ] = useState<number | null>(null);
   const [isAuthPopupOpen, setIsAuthPopupOpen] = useState(false);
@@ -55,6 +55,43 @@ export default function HomePage() {
       localStorage.setItem('selectedStyle', selectedStyle);
     }
   }, [selectedStyle]);
+
+  // Typewriter effect for story placeholder
+  const [placeholderText, setPlaceholderText] = useState('');
+  const [ideaIndex, setIdeaIndex] = useState(0);
+  const [isTypingPhase, setIsTypingPhase] = useState(true);
+
+  useEffect(() => {
+    const ideas = [
+      "A cyberpunk detective investigates a neon-lit city...",
+      "A magical school where students learn to control elements...",
+      "Two rival martial artists team up to defeat a common enemy...",
+      "A slice-of-life romance about a baker and a writer...",
+      "A space explorer crash lands on an unknown planet..."
+    ];
+    let timeout: NodeJS.Timeout;
+    const currentIdea = ideas[ideaIndex];
+
+    if (isTypingPhase) {
+      if (placeholderText.length < currentIdea.length) {
+        timeout = setTimeout(() => {
+          setPlaceholderText(currentIdea.slice(0, placeholderText.length + 1));
+        }, 50);
+      } else {
+        timeout = setTimeout(() => setIsTypingPhase(false), 2000);
+      }
+    } else {
+      if (placeholderText.length > 0) {
+        timeout = setTimeout(() => {
+          setPlaceholderText(currentIdea.slice(0, placeholderText.length - 1));
+        }, 30);
+      } else {
+        setIdeaIndex((prev) => (prev + 1) % ideas.length);
+        setIsTypingPhase(true);
+      }
+    }
+    return () => clearTimeout(timeout);
+  }, [placeholderText, ideaIndex, isTypingPhase]);
 
   const openAuthPopup = () => setIsAuthPopupOpen(true);
   const closeAuthPopup = () => setIsAuthPopupOpen(false);
@@ -369,7 +406,7 @@ export default function HomePage() {
           <div className="relative z-10">
             {/* Description / Subtitle */}
             <div className="flex flex-col items-center justify-center space-y-2 mb-8 mt-4 md:mt-0 w-full overflow-hidden">
-              <p className="text-[12px] min-[380px]:text-[13px] sm:text-sm md:text-base font-bold text-gray-800 tracking-wider whitespace-nowrap">
+              <p className="text-[10px] sm:text-[13px] md:text-base font-bold text-gray-800 tracking-wider whitespace-nowrap overflow-visible w-full text-center">
                 Write your story <span className="text-gray-400 font-normal mx-0.5 md:mx-1">→</span> Add characters <span className="text-gray-400 font-normal mx-0.5 md:mx-1">→</span> Generate your comic
               </p>
             </div>
@@ -420,13 +457,22 @@ export default function HomePage() {
                   <div className="flex items-start gap-6">
                     {/* Add Character Button - Only show if less than 3 characters */}
                     {selectedCharacters.length < 3 && (
-                      <button onClick={openAddCharacterPopup} className="cursor-pointer group flex-shrink-0">
+                      <button onClick={openAddCharacterPopup} className="cursor-pointer group flex-shrink-0 relative">
+                        {selectedCharacters.length === 0 && (
+                          <motion.div 
+                            animate={{ y: [0, 10, 0] }} 
+                            transition={{ repeat: Infinity, duration: 1 }}
+                            className="absolute left-1/2 -translate-x-1/2 -top-10 text-4xl z-20 pointer-events-none drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]"
+                          >
+                            👇
+                          </motion.div>
+                        )}
                         <div className="flex flex-col items-center gap-2">
                           {/* Yellow Circle with Plus */}
                           <motion.div
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.95 }}
-                            className="w-32 h-32 rounded-full bg-[#facc15] border-[4px] border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] group-hover:shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center"
+                            className="w-32 h-32 rounded-full bg-[#facc15] border-[4px] border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] group-hover:shadow-[5px_5px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center relative mt-2"
                           >
                             <span className="text-6xl font-black leading-none -mt-2">+</span>
                           </motion.div>
@@ -532,7 +578,16 @@ export default function HomePage() {
                       <span className="text-red-600 text-sm font-bold">(Required - Write or generate a story)</span>
                     )}
                   </div>
-                  <div className="relative">
+                  <div className="relative mt-2">
+                    {selectedCharacters.length > 0 && !storyText && (
+                      <motion.div 
+                        animate={{ y: [0, 10, 0] }} 
+                        transition={{ repeat: Infinity, duration: 1 }}
+                        className="absolute right-4 -top-8 text-4xl z-20 pointer-events-none drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]"
+                      >
+                        👇
+                      </motion.div>
+                    )}
                     <div className="relative bg-white border-[3px] border-black rounded-3xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-4 min-h-[120px]">
                       <textarea
                         value={storyText}
@@ -542,7 +597,7 @@ export default function HomePage() {
                         }}
                         spellCheck={false}
                         className="w-full h-full min-h-[88px] text-sm text-gray-700 leading-relaxed resize-none border-none outline-none bg-transparent"
-                        placeholder="Write your story here or select a Category below and click 'Inspire Me' to generate themed story ideas..."
+                        placeholder={placeholderText || "Write your story here or select a Category below and click 'Inspire Me' to generate themed story ideas..."}
                       />
 
                       {/* Speech Bubble Tail */}
@@ -651,15 +706,26 @@ export default function HomePage() {
                 </div>
 
                 {/* Generate Button */}
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={handleGenerateClick}
-                  className="w-full py-4 bg-[#6366f1] text-white font-black text-xl border-[3px] border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center gap-3 rounded-xl"
-                >
-                  <Sparkles className="w-6 h-6" />
-                  Generate
-                </motion.button>
+                <div className="relative mt-4">
+                  {selectedCharacters.length > 0 && storyText.trim().length > 0 && selectedStyle && (
+                    <motion.div 
+                      animate={{ y: [0, 10, 0] }} 
+                      transition={{ repeat: Infinity, duration: 1 }}
+                      className="absolute right-10 -top-8 text-4xl z-20 pointer-events-none drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]"
+                    >
+                      👇
+                    </motion.div>
+                  )}
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={handleGenerateClick}
+                    className="w-full py-4 bg-[#6366f1] text-white font-black text-xl border-[3px] border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center gap-3 rounded-xl"
+                  >
+                    <Sparkles className="w-6 h-6" />
+                    Generate
+                  </motion.button>
+                </div>
               </div>
 
 

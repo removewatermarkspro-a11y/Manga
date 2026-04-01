@@ -14,8 +14,6 @@ interface CreateCharacterPopupProps {
 
 export default function CreateCharacterPopup({ isOpen, onClose, onBack, onCharacterCreate, editingCharacter, existingCharacters = [] }: CreateCharacterPopupProps) {
     const [characterName, setCharacterName] = useState('');
-    const [selectedGender, setSelectedGender] = useState<string>('');
-    const [selectedAge, setSelectedAge] = useState<string>('');
     const [selectedRole, setSelectedRole] = useState<string>('');
     const [uploadedImage, setUploadedImage] = useState<string | null>(null);
     const [showPhotoSourceModal, setShowPhotoSourceModal] = useState(false);
@@ -24,8 +22,6 @@ export default function CreateCharacterPopup({ isOpen, onClose, onBack, onCharac
     const [errors, setErrors] = useState({
         photo: false,
         name: false,
-        gender: false,
-        age: false,
         role: false
     });
 
@@ -43,12 +39,10 @@ export default function CreateCharacterPopup({ isOpen, onClose, onBack, onCharac
 
     const resetForm = () => {
         setCharacterName('');
-        setSelectedGender('');
-        setSelectedAge('');
         setSelectedRole('');
         setUploadedImage(null);
         setShowPhotoSourceModal(false);
-        setErrors({ photo: false, name: false, gender: false, age: false, role: false });
+        setErrors({ photo: false, name: false, role: false });
     };
 
     const handleAddCharacter = () => {
@@ -56,8 +50,6 @@ export default function CreateCharacterPopup({ isOpen, onClose, onBack, onCharac
         const newErrors = {
             photo: !uploadedImage,
             name: !characterName.trim(),
-            gender: !selectedGender,
-            age: !selectedAge,
             role: !selectedRole
         };
 
@@ -67,8 +59,6 @@ export default function CreateCharacterPopup({ isOpen, onClose, onBack, onCharac
         const errorFields = [
             { key: 'photo', id: 'photo-upload-section' },
             { key: 'name', id: 'name-input-section' },
-            { key: 'gender', id: 'gender-section' },
-            { key: 'age', id: 'age-section' },
             { key: 'role', id: 'role-section' }
         ];
 
@@ -87,8 +77,6 @@ export default function CreateCharacterPopup({ isOpen, onClose, onBack, onCharac
             id: editingCharacter?.id || Date.now().toString(),
             name: characterName,
             image: uploadedImage!,
-            gender: selectedGender,
-            age: selectedAge,
             role: selectedRole
         };
         onCharacterCreate(newCharacter);
@@ -105,8 +93,6 @@ export default function CreateCharacterPopup({ isOpen, onClose, onBack, onCharac
     useEffect(() => {
         if (editingCharacter) {
             setCharacterName(editingCharacter.name);
-            setSelectedGender(editingCharacter.gender || '');
-            setSelectedAge(editingCharacter.age || '');
             setSelectedRole(editingCharacter.role || '');
             setUploadedImage(editingCharacter.image);
         }
@@ -262,73 +248,6 @@ export default function CreateCharacterPopup({ isOpen, onClose, onBack, onCharac
                                         placeholder="Enter character name"
                                         className={`w-full px-4 py-3 border-[3px] ${errors.name ? 'border-red-500' : 'border-black'} shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] text-base focus:outline-none focus:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all rounded-xl`}
                                     />
-                                </div>
-
-                                {/* Gender Selection */}
-                                <div id="gender-section" className="space-y-3">
-                                    <label className={`text-lg font-black ${errors.gender ? 'text-red-500' : 'text-black'}`}>
-                                        Select a Gender {errors.gender && <span className="text-sm font-bold">(Required)</span>}
-                                    </label>
-                                    <div className="flex gap-3">
-                                        <button
-                                            onClick={() => {
-                                                setSelectedGender('Male');
-                                                setErrors(prev => ({ ...prev, gender: false }));
-                                            }}
-                                            className={`flex-1 px-4 py-3 border-[3px] ${errors.gender ? 'border-red-500' : 'border-black'} shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] font-bold text-base transition-all hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] rounded-xl flex items-center justify-center gap-2 ${selectedGender === 'Male' ? 'bg-[#facc15]' : 'bg-white'}`}
-                                        >
-                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                                                <path d="M10 14L21 3M21 3H15M21 3V9M10 14C12.7614 14 15 11.7614 15 9C15 6.23858 12.7614 4 10 4C7.23858 4 5 6.23858 5 9C5 11.7614 7.23858 14 10 14Z" stroke="#6366f1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                            </svg>
-                                            Male
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                setSelectedGender('Female');
-                                                setErrors(prev => ({ ...prev, gender: false }));
-                                            }}
-                                            className={`flex-1 px-4 py-3 border-[3px] ${errors.gender ? 'border-red-500' : 'border-black'} shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] font-bold text-base transition-all hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] rounded-xl flex items-center justify-center gap-2 ${selectedGender === 'Female' ? 'bg-[#facc15]' : 'bg-white'}`}
-                                        >
-                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                                                <path d="M12 15C15.3137 15 18 12.3137 18 9C18 5.68629 15.3137 3 12 3C8.68629 3 6 5.68629 6 9C6 12.3137 8.68629 15 12 15ZM12 15V21M9 18H15" stroke="#ec4899" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                            </svg>
-                                            Female
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                setSelectedGender('Other');
-                                                setErrors(prev => ({ ...prev, gender: false }));
-                                            }}
-                                            className={`flex-1 px-4 py-3 border-[3px] ${errors.gender ? 'border-red-500' : 'border-black'} shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] font-bold text-base transition-all hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] rounded-xl flex items-center justify-center gap-2 ${selectedGender === 'Other' ? 'bg-[#facc15]' : 'bg-white'}`}
-                                        >
-                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                                                <circle cx="12" cy="12" r="9" stroke="#9333ea" strokeWidth="2" />
-                                                <path d="M12 6V12L16 14" stroke="#9333ea" strokeWidth="2" strokeLinecap="round" />
-                                            </svg>
-                                            Don't Specify
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* Age Group */}
-                                <div id="age-section" className="space-y-3">
-                                    <label className={`text-lg font-black ${errors.age ? 'text-red-500' : 'text-black'}`}>
-                                        Age Group {errors.age && <span className="text-sm font-bold">(Required)</span>}
-                                    </label>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        {['Kid', 'Young Adult', 'Adult', 'Elder'].map((age) => (
-                                            <button
-                                                key={age}
-                                                onClick={() => {
-                                                    setSelectedAge(age);
-                                                    setErrors(prev => ({ ...prev, age: false }));
-                                                }}
-                                                className={`px-4 py-3 border-[3px] ${errors.age ? 'border-red-500' : 'border-black'} shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] font-bold text-base transition-all hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] rounded-xl ${selectedAge === age ? 'bg-[#facc15]' : 'bg-white'}`}
-                                            >
-                                                {age}
-                                            </button>
-                                        ))}
-                                    </div>
                                 </div>
 
                                 {/* Character Role */}
