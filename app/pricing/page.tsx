@@ -117,27 +117,67 @@ export default function PricingPage() {
                 body: JSON.stringify(pendingData)
             });
 
-            // Handle non-JSON responses (e.g. Vercel timeout, body too large)
-            const contentType = res.headers.get('content-type');
-            if (!contentType || !contentType.includes('application/json')) {
+            if (!res.ok || !res.body) {
                 const text = await res.text();
-                throw new Error(`Server error (${res.status}): ${text.substring(0, 200)}`);
+                throw new Error(`Server error (${res.status}): ${text.substring(0, 300)}`);
             }
 
-            const data = await res.json();
-            
-            if (data.images) {
-                localStorage.setItem('generatedImages', JSON.stringify(data.images));
-                localStorage.removeItem('pendingGenerationData');
-                // Redirect with creation ID if available
-                const creationId = data.creationId;
-                if (creationId) {
-                    window.location.href = `/results?id=${creationId}`;
-                } else {
-                    window.location.href = '/results';
+            const contentType = res.headers.get('content-type') || '';
+
+            // --- SSE streaming path ---
+            if (contentType.includes('text/event-stream')) {
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                const collectedImages: string[] = [];
+                let buffer = '';
+                let creationId: string | null = null;
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+
+                    for (const line of lines) {
+                        if (!line.startsWith('data: ')) continue;
+                        const payload = line.slice(6).trim();
+                        if (!payload) continue;
+
+                        try {
+                            const event = JSON.parse(payload);
+                            if (event.type === 'image') {
+                                collectedImages.push(event.url);
+                            } else if (event.type === 'done') {
+                                creationId = event.creationId || null;
+                            } else if (event.type === 'error') {
+                                throw new Error(event.message);
+                            }
+                        } catch (parseErr) {
+                            // ignore malformed SSE lines
+                        }
+                    }
                 }
+
+                if (collectedImages.length === 0) {
+                    throw new Error('No images were generated');
+                }
+
+                localStorage.setItem('generatedImages', JSON.stringify(collectedImages));
+                localStorage.removeItem('pendingGenerationData');
+                window.location.href = creationId ? `/results?id=${creationId}` : '/results';
+
+            // --- Legacy JSON path (fallback) ---
             } else {
-                throw new Error(data.error || 'Unknown error');
+                const data = await res.json();
+                if (data.images) {
+                    localStorage.setItem('generatedImages', JSON.stringify(data.images));
+                    localStorage.removeItem('pendingGenerationData');
+                    window.location.href = data.creationId ? `/results?id=${data.creationId}` : '/results';
+                } else {
+                    throw new Error(data.error || 'Unknown error');
+                }
             }
         } catch (error: any) {
             console.error('Generation Error:', error);
@@ -160,14 +200,14 @@ export default function PricingPage() {
             }}
         >
             {/* Header */}
-            <header className="relative z-10 px-6 py-6 flex items-center justify-between max-w-7xl mx-auto">
+            <header className="relative z-10 px-6 py-2 flex items-center justify-between max-w-7xl mx-auto">
                 <a href="/" className="flex items-center gap-3 cursor-pointer">
                     <Image
                         src="/images/logo.png"
                         alt="AI Comic Generator"
                         width={200}
                         height={80}
-                        className="h-24 w-auto"
+                        className="h-16 w-auto"
                     />
                 </a>
 
@@ -450,13 +490,13 @@ export default function PricingPage() {
             </header>
 
             {/* Main Content */}
-            <main className="max-w-7xl mx-auto px-4 py-4 md:py-6 flex flex-col min-h-[calc(100vh-140px)]">
+            <main className="max-w-7xl mx-auto px-4 py-2 md:py-3 flex flex-col" style={{ minHeight: 'calc(100vh - 90px)' }}>
                 <div className="flex flex-col xl:flex-row gap-4 xl:gap-6 xl:items-stretch w-full flex-1">
 
                 {/* Left Column: Title & Preview */}
                 <div className="w-full xl:w-[35%] flex flex-col items-center xl:items-start max-w-2xl mx-auto xl:mx-0 h-full">
                     {/* Stylized Title Section */}
-                    <div className="text-center xl:text-left mb-4 md:mb-6 w-full flex flex-col items-center xl:items-start justify-end xl:min-h-[150px]">
+                    <div className="text-center xl:text-left mb-2 md:mb-3 w-full flex flex-col items-center xl:items-start justify-end">
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -465,17 +505,17 @@ export default function PricingPage() {
                         <span className="inline-block py-1 md:py-1.5 px-2 md:px-3 bg-white border-[2px] border-black rounded-full text-black font-black text-[10px] md:text-xs uppercase tracking-widest shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] md:shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] mb-3 md:mb-4 transform -rotate-2">
                             Download Your Generation
                         </span>
-                        <h1 className="text-3xl md:text-5xl lg:text-5xl xl:text-6xl font-black leading-tight tracking-wider font-display uppercase drop-shadow-sm mb-2 md:mb-4">
+                        <h1 className="text-2xl md:text-4xl lg:text-4xl xl:text-5xl font-black leading-tight tracking-wider font-display uppercase drop-shadow-sm mb-1 md:mb-2">
                             {getStyleTitlePrefix()} <br className="hidden xl:block" /><span className="text-transparent bg-clip-text bg-gradient-to-r from-[#6366f1] to-[#8b5cf6]">READY!</span>
                         </h1>
-                        <p className="text-sm md:text-xl font-bold text-gray-700">
+                        <p className="text-xs md:text-base font-bold text-gray-700">
                             Your creation is complete and waiting for you. Get Pro to download.
                         </p>
                     </motion.div>
                 </div>
 
                 {/* Results Section */}
-                <div className="w-full flex-1 flex flex-col justify-center relative bg-white border-[3px] md:border-[4px] border-black rounded-2xl md:rounded-3xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] md:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] py-3 px-2 md:p-6 overflow-hidden min-h-[250px] md:min-h-0">
+                <div className="w-full flex-1 flex flex-col justify-center relative bg-white border-[3px] md:border-[4px] border-black rounded-2xl md:rounded-3xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] md:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] py-3 px-2 md:p-4 overflow-hidden min-h-[180px] md:min-h-0">
                     {/* Background Image */}
                     <div className="absolute inset-0 pointer-events-none">
                         <Image
@@ -487,8 +527,8 @@ export default function PricingPage() {
                     </div>
 
                     {/* Preview Box */}
-                    <div className="relative z-10 mb-2 md:mb-8">
-                        <div className={`${getAspectRatio()} w-[140px] sm:w-[220px] md:w-full md:max-w-md mx-auto bg-gray-100 border-[3px] md:border-[4px] border-black rounded-xl md:rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden flex items-center justify-center`}>
+                    <div className="relative z-10 mb-2 md:mb-4">
+                        <div className={`${getAspectRatio()} w-[120px] sm:w-[180px] md:w-full md:max-w-sm mx-auto bg-gray-100 border-[3px] md:border-[4px] border-black rounded-xl md:rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden flex items-center justify-center`}>
                             {/* Blurred Background Image */}
                             <div className="absolute inset-0">
                                 <Image
@@ -517,8 +557,8 @@ export default function PricingPage() {
 
                 {/* Right Column: Pricing Section */}
                 <div id="pricing" className="w-full xl:w-[65%] flex flex-col max-w-5xl mx-auto xl:mx-0 mt-4 xl:mt-0 relative h-full">
-                    <div className="text-center mb-4 md:mb-6 flex flex-col justify-end xl:min-h-[150px] mt-2 md:mt-0">
-                        <h3 className="text-xl md:text-3xl font-black text-black font-display mb-1 md:mb-3">
+                    <div className="text-center mb-2 md:mb-4 flex flex-col justify-end mt-2 md:mt-0">
+                        <h3 className="text-xl md:text-3xl font-black text-black font-display mb-1 md:mb-2">
                             Choose your package <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#6366f1] to-[#8b5cf6]">now:</span>
                         </h3>
                     </div>
@@ -624,8 +664,8 @@ export default function PricingPage() {
             </div>
 
             {/* Cancel Anytime (Below Columns) */}
-            <div className="mt-6 md:mt-8 mb-4 text-center w-full">
-                <div className="hidden md:inline-flex items-center gap-2 bg-white/90 px-6 py-2.5 rounded-full border-[2px] border-black/10 shadow-sm mx-auto text-sm text-black font-bold whitespace-nowrap">
+            <div className="mt-3 md:mt-4 mb-2 text-center w-full">
+                <div className="hidden md:inline-flex items-center gap-2 bg-white/90 px-6 py-2 rounded-full border-[2px] border-black/10 shadow-sm mx-auto text-sm text-black font-bold whitespace-nowrap">
                     <Check className="w-4 h-4 text-green-600" />
                     Cancel anytime <span className="text-gray-400 mx-1">•</span>
                     <Check className="w-4 h-4 text-green-600" />
@@ -634,7 +674,7 @@ export default function PricingPage() {
                     Secure checkout
                 </div>
                 {/* Mobile variant */}
-                <div className="md:hidden inline-flex items-center justify-center flex-wrap gap-1.5 bg-white/90 px-4 py-2.5 rounded-full border-[2px] border-black/10 shadow-sm mx-auto text-xs text-black font-bold">
+                <div className="md:hidden inline-flex items-center justify-center flex-wrap gap-1.5 bg-white/90 px-4 py-2 rounded-full border-[2px] border-black/10 shadow-sm mx-auto text-xs text-black font-bold">
                     <Check className="w-3.5 h-3.5 text-green-600 shrink-0" />
                     <span>Cancel anytime</span>
                     <span className="text-gray-400 mx-0.5">•</span>
@@ -643,8 +683,6 @@ export default function PricingPage() {
                 </div>
             </div>
         </main>
-
-            <Footer />
 
             {/* Loading Popup for Real Generation */}
             <LoadingPopup

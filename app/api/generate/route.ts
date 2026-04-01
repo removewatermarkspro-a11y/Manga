@@ -187,8 +187,8 @@ export async function POST(req: Request) {
             );
         }
 
-        let creationId = null;
-        let profile = null;
+        let creationId: string | null = null;
+        let profile: { credits: number } | null = null;
 
         if (!isTesting && user) {
             // Check credits
@@ -270,31 +270,7 @@ export async function POST(req: Request) {
 
         const llamaSystemPrompt = `You are a professional ${styleInstruction} scriptwriter. You create vivid, detailed page-by-page scripts for comic stories. You must output ONLY a valid JSON array of exactly 11 strings. No other text, no markdown, no explanation, no code fences. Just the raw JSON array.`;
 
-        const llamaUserPrompt = `Create an 11-page ${styleInstruction} story based on the following:
-
-STORY CONCEPT: "${storyText}"
-
-CHARACTERS:
-${characterDescriptions}
-
-CRITICAL RULES:
-1. Output ONLY a valid JSON array of exactly 11 strings. Nothing else.
-2. The FIRST string (index 0) is the COVER PAGE description: a dramatic, eye-catching cover illustration featuring the main characters with the title of the story.
-3. Strings 1 through 10 are the 10 STORY PAGES.
-4. Each story page description must describe a FULL COMIC PAGE with 3-4 panels arranged in a layout, NOT a single image. Each panel within the page shows a different moment or angle.
-5. Include dialogue in speech bubbles for each page. Write the actual dialogue the characters say.
-6. You MUST mention each character BY NAME and describe their appearance in every page they appear in.
-7. Include specific visual details: poses, facial expressions, backgrounds, lighting, camera angles for each panel.
-8. The 10 story pages must follow a clear narrative arc:
-   - Pages 1-2: Setup and introduction
-   - Pages 3-4: Rising action and conflict
-   - Pages 5-6: Midpoint twist
-   - Pages 7-8: Climax
-   - Pages 9-10: Resolution
-9. The story must be DIRECTLY about "${storyText}" - do not invent a different story.
-10. Write all descriptions in English.
-
-Output the JSON array now:`;
+        const llamaUserPrompt = `Create an 11-page ${styleInstruction} story based on the following:\n\nSTORY CONCEPT: "${storyText}"\n\nCHARACTERS:\n${characterDescriptions}\n\nCRITICAL RULES:\n1. Output ONLY a valid JSON array of exactly 11 strings. Nothing else.\n2. The FIRST string (index 0) is the COVER PAGE description: a dramatic, eye-catching cover illustration featuring the main characters with the title of the story.\n3. Strings 1 through 10 are the 10 STORY PAGES.\n4. Each story page description must describe a FULL COMIC PAGE with 3-4 panels arranged in a layout, NOT a single image. Each panel within the page shows a different moment or angle.\n5. Include dialogue in speech bubbles for each page. Write the actual dialogue the characters say.\n6. You MUST mention each character BY NAME and describe their appearance in every page they appear in.\n7. Include specific visual details: poses, facial expressions, backgrounds, lighting, camera angles for each panel.\n8. The 10 story pages must follow a clear narrative arc:\n   - Pages 1-2: Setup and introduction\n   - Pages 3-4: Rising action and conflict\n   - Pages 5-6: Midpoint twist\n   - Pages 7-8: Climax\n   - Pages 9-10: Resolution\n9. The story must be DIRECTLY about "${storyText}" - do not invent a different story.\n10. Write all descriptions in English.\n\nOutput the JSON array now:`;
 
         const llamaOutput = await replicate.run(
             "meta/meta-llama-3-8b-instruct",
@@ -354,7 +330,7 @@ Output the JSON array now:`;
         console.log('Step 1 complete!', pageDescriptions.length, 'page descriptions generated.');
 
         // ========================================================
-        // STEP 2: Generate images one by one with nano-banana-2
+        // STEP 2: Upload character images then stream via SSE
         // ========================================================
         console.log('Step 2: Preparing image inputs...');
 
@@ -369,65 +345,98 @@ Output the JSON array now:`;
                 allCharacterImages.push(c.image);
             }
         }
-        
-        console.log('Step 2: Generating images with nano-banana-2...');
-        const generatedImages: string[] = [];
 
-        for (let i = 0; i < 11; i++) {
-            const pageDesc = pageDescriptions[i];
-            const isCover = i === 0;
+        console.log('Step 2: Streaming images with nano-banana-2...');
 
-            let fullPrompt = '';
-            if (isCover) {
-                fullPrompt = `${styleKeywords}. A stunning comic book COVER PAGE illustration. ${pageDesc}. The characters must look exactly like the provided reference images. High quality, professional comic book cover design.`;
-            } else {
-                fullPrompt = `${styleKeywords}. A full comic book PAGE with 3-4 panels arranged in a dynamic layout. Each panel shows a different moment in the scene. Include speech bubbles with dialogue text. ${pageDesc}. The characters must look exactly like the provided reference images. Professional comic book page layout.`;
+        // Capture supabase/creationId/profile/user/isTesting in closure for stream
+        const _supabase = supabase;
+        const _creationId = creationId;
+        const _profile = profile;
+        const _user = user;
+        const _isTesting = isTesting;
+
+        // Return a ReadableStream (SSE) so each image is sent to the client immediately
+        const stream = new ReadableStream({
+            async start(controller) {
+                const encode = (obj: object) => {
+                    const line = `data: ${JSON.stringify(obj)}\n\n`;
+                    controller.enqueue(new TextEncoder().encode(line));
+                };
+
+                const generatedImages: string[] = [];
+
+                try {
+                    for (let i = 0; i < 11; i++) {
+                        const pageDesc = pageDescriptions[i];
+                        const isCover = i === 0;
+
+                        let fullPrompt = '';
+                        if (isCover) {
+                            fullPrompt = `${styleKeywords}. A stunning comic book COVER PAGE illustration. ${pageDesc}. The characters must look exactly like the provided reference images. High quality, professional comic book cover design.`;
+                        } else {
+                            fullPrompt = `${styleKeywords}. A full comic book PAGE with 3-4 panels arranged in a dynamic layout. Each panel shows a different moment in the scene. Include speech bubbles with dialogue text. ${pageDesc}. The characters must look exactly like the provided reference images. Professional comic book page layout.`;
+                        }
+
+                        console.log(`Generating page ${isCover ? 'COVER' : i}/10...`);
+
+                        const imageUrl = await generateImageWithKie(fullPrompt, allCharacterImages);
+
+                        console.log(`Page ${isCover ? 'COVER' : i} generated: ${imageUrl.substring(0, 80)}...`);
+                        generatedImages.push(imageUrl);
+
+                        // Push image URL to client immediately
+                        encode({ type: 'image', url: imageUrl, page: i });
+
+                        // Save page to Supabase
+                        if (!_isTesting && _creationId) {
+                            await _supabase
+                                .from('creation_pages')
+                                .insert({
+                                    creation_id: _creationId,
+                                    page_number: i,
+                                    image_url: imageUrl,
+                                });
+                        }
+                    }
+
+                    // Finalize
+                    if (!_isTesting && _creationId && _profile && _user) {
+                        await _supabase
+                            .from('creations')
+                            .update({ status: 'completed' })
+                            .eq('id', _creationId);
+
+                        await _supabase
+                            .from('profiles')
+                            .update({ credits: _profile.credits - 1 })
+                            .eq('id', _user.id);
+                    }
+
+                    console.log('Generation complete!', generatedImages.length, 'images generated.');
+                    encode({ type: 'done', creationId: _creationId });
+
+                } catch (err: any) {
+                    console.error('Streaming generation error:', err);
+                    encode({ type: 'error', message: err.message || 'Generation failed' });
+                } finally {
+                    controller.close();
+                }
             }
-
-            console.log(`Generating page ${i === 0 ? 'COVER' : i}/10...`);
-
-            const imageUrl = await generateImageWithKie(fullPrompt, allCharacterImages);
-
-            console.log(`Page ${i === 0 ? 'COVER' : i} generated: ${imageUrl.substring(0, 80)}...`);
-            generatedImages.push(imageUrl);
-
-            // Save each page to Supabase as it's generated
-            if (!isTesting && creationId) {
-                await supabase
-                    .from('creation_pages')
-                    .insert({
-                        creation_id: creationId,
-                        page_number: i,
-                        image_url: imageUrl,
-                    });
-            }
-        }
-
-        if (!isTesting && creationId && profile && user) {
-            // Mark creation as completed
-            await supabase
-                .from('creations')
-                .update({ status: 'completed' })
-                .eq('id', creationId);
-
-            // Decrement user's credits
-            await supabase
-                .from('profiles')
-                .update({ credits: profile.credits - 1 })
-                .eq('id', user.id);
-        }
-
-        console.log('Generation complete!', generatedImages.length, 'images generated.');
-
-        return NextResponse.json({
-            images: generatedImages,
-            creationId: creationId,
         });
+
+        return new Response(stream, {
+            headers: {
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-cache, no-transform',
+                'X-Accel-Buffering': 'no',
+                'Connection': 'keep-alive',
+            },
+        });
+
     } catch (error: any) {
         console.error('Error generating images:', error);
 
         let errorMessage = 'Failed to generate images';
-
         if (error.response?.data) {
             errorMessage = JSON.stringify(error.response.data);
         } else if (error.message) {
