@@ -367,8 +367,41 @@ export default function HomePage() {
           <div className="relative z-10">
             {/* Description */}
             <p className="text-sm md:text-base text-gray-700 leading-relaxed max-w-xl mx-auto mb-8 mt-4 md:mt-0">
-              Create stunning comics and manga in minutes with our AI generator. Choose your style and bring your stories to life instantly — no drawing skills required!
+              Create stunning comics, webtoons, and manga in minutes with our AI generator. Choose your style—from superhero to romantic manga—and bring your professional comic strips to life instantly. No drawing skills required!
             </p>
+
+            {/* Mobile CTA and Marquee */}
+            <div className="flex flex-col items-center md:hidden w-full mt-4 mb-8 overflow-hidden space-y-6">
+              <button 
+                onClick={scrollToForm}
+                className="px-6 py-4 bg-[#facc15] text-black font-black text-xl border-[4px] border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center gap-2 rounded-xl"
+              >
+                👇 Create your comic book
+              </button>
+
+              <div className="w-[100vw] relative left-1/2 -translate-x-1/2 px-4 overflow-hidden py-4 -mb-4">
+                <div className="flex w-full">
+                  <motion.div
+                    className="flex gap-4 pr-4 min-w-max"
+                    animate={{ x: "-50%" }}
+                    transition={{ repeat: Infinity, ease: "linear", duration: 15 }}
+                  >
+                    {[...examples, ...examples, ...examples, ...examples].map((ex, index) => {
+                      const i = ex.id;
+                      return (
+                        <div 
+                          key={`${index}-${ex.id}`} 
+                          className="w-[140px] h-[100px] bg-white border-[3px] border-black flex-shrink-0 flex items-center justify-center relative overflow-hidden rounded-lg shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]"
+                        >
+                          <div className={`absolute inset-0 bg-gradient-to-br ${i === 1 ? 'from-orange-200 to-orange-300' : i === 2 ? 'from-blue-200 to-blue-300' : i === 3 ? 'from-purple-200 to-purple-300' : 'from-pink-200 to-pink-300'} opacity-50`}></div>
+                          <span className="text-4xl z-10">{['🎬', '🦸‍♂️', '🎇', '🌅'][i-1]}</span>
+                        </div>
+                      );
+                    })}
+                  </motion.div>
+                </div>
+              </div>
+            </div>
 
             {/* Form and Carousel Grid */}
             <div className="grid lg:grid-cols-2 gap-8 items-start">
@@ -630,8 +663,8 @@ export default function HomePage() {
               </div>
 
 
-              {/* Right Column - Carousel (Second on mobile, Second on desktop) */}
-              <div className="order-2 relative mt-4 md:mt-0">
+              {/* Right Column - Carousel (Hidden on mobile) */}
+              <div className="hidden md:block order-2 relative mt-4 md:mt-0">
                 {/* Wrap Carousel and Bubbles to lock positioning together */}
                 <div className="relative">
                   {/* Example Carousel - Auto-scrolling */}
