@@ -113,12 +113,20 @@ async function uploadBase64ToPublicUrl(base64Str: string): Promise<string> {
 
 // -------------------------------------------------------------------------------------------------
 // Kie API helper for nano-banana-2
-// IMPORTANT: image_input MUST be an array of public HTTP URLs (not base64)
-async function generateImageWithKie(prompt: string, imageUrls: string[]): Promise<string> {
+// seed: pass the SAME seed across all pages for consistent art style
+async function generateImageWithKie(prompt: string, imageUrls: string[], seed?: number): Promise<string> {
     const KIE_API_KEY = "0ebb274e201da9dd3487833efa368f65";
 
-    console.log(`Kie createTask — prompt: ${prompt.length} chars, images: ${imageUrls.length} URLs`);
-    if (imageUrls.length > 0) console.log(`  First image URL: ${imageUrls[0].substring(0, 80)}...`);
+    console.log(`Kie createTask — prompt: ${prompt.length} chars, images: ${imageUrls.length}, seed: ${seed}`);
+
+    const inputPayload: Record<string, any> = {
+        prompt,
+        aspect_ratio: "3:4",
+        resolution: "1K",
+        output_format: "jpg"
+    };
+    if (imageUrls.length > 0) inputPayload.image_input = imageUrls;
+    if (seed !== undefined) inputPayload.seed = seed;
 
     const createRes = await fetchWithRetry(
         "https://api.kie.ai/api/v1/jobs/createTask",
@@ -130,13 +138,7 @@ async function generateImageWithKie(prompt: string, imageUrls: string[]): Promis
             },
             body: JSON.stringify({
                 model: "nano-banana-2",
-                input: {
-                    prompt,
-                    image_input: imageUrls,
-                    aspect_ratio: "3:4",
-                    resolution: "1K",
-                    output_format: "jpg"
-                }
+                input: inputPayload
             })
         },
         3,
@@ -422,27 +424,33 @@ Keep each page description under 80 words. Be specific and visual.`;
         console.log(`Step 2 complete: ${allCharacterImageUrls.length} photo URL(s) ready.`);
 
         // ========================================================
-        // STEP 3: Build 11 Kie prompts from the script
+        // STEP 3: Build 11 SHORT Kie prompts from the script
+        // Kie follows short prompts (< 60 words) much better
         // ========================================================
         const kiePrompts: string[] = pageDescriptions.map((desc, i) => {
-            const charRefInstruction = `The characters in this image must look exactly like the people in the provided reference photos. Use the reference photos to reproduce their exact face, hair, skin tone, and features.`;
+            // Truncate LLaMA description to ~60 words max for Kie
+            const words = desc.split(/\s+/);
+            const shortDesc = words.slice(0, 55).join(' ');
 
             if (i === 0) {
-                // Cover page
-                return `${styleKeywords}. ${desc} ${charRefInstruction}`;
+                return `${styleKeywords}. ${shortDesc}. Character from reference photo.`;
             } else {
-                // Story page
-                return `${styleKeywords}. Full ${styleInstruction} page with panels and speech bubbles. ${desc} ${charRefInstruction}`;
+                return `${styleKeywords}, ${styleInstruction} page with panels. ${shortDesc}. Character from reference photo.`;
             }
         });
 
-        console.log('Step 3: 11 Kie prompts built.');
+        // Use one fixed seed for ALL images → same art style, colors, character design
+        const globalSeed = Math.floor(Math.random() * 999999);
+
+        console.log(`Step 3: 11 Kie prompts built. Global seed: ${globalSeed}`);
         kiePrompts.forEach((p, i) => console.log(`  Prompt ${i} (${p.length} chars): ${p.substring(0, 150)}...`));
 
         // ========================================================
-        // STEP 4: Stream image generation via SSE
+        // STEP 4: Stream images — PARALLEL batches of 3 to avoid 300s timeout
+        // Sequential: 11 × 30s = 330s (TIMEOUT)
+        // Parallel (3): 4 batches × 30s = 120s (OK)
         // ========================================================
-        console.log('Step 4: Streaming images with nano-banana-2...');
+        console.log('Step 4: Generating images in parallel batches...');
 
         const _supabase = supabase;
         const _creationId = creationId;
@@ -457,51 +465,58 @@ Keep each page description under 80 words. Be specific and visual.`;
                     controller.enqueue(new TextEncoder().encode(line));
                 };
 
-                const generatedImages: string[] = [];
+                const generatedImages: (string | null)[] = new Array(11).fill(null);
 
                 try {
-                    for (let i = 0; i < 11; i++) {
-                        const prompt = kiePrompts[i];
+                    const BATCH_SIZE = 3;
+                    const totalBatches = Math.ceil(11 / BATCH_SIZE);
 
-                        console.log(`\n=== GENERATING PAGE ${i === 0 ? 'COVER' : i} ===`);
-                        console.log(`Prompt (${prompt.length} chars): ${prompt.substring(0, 300)}...`);
-                        console.log(`Image refs: ${allCharacterImageUrls.length} photos`);
+                    for (let batch = 0; batch < totalBatches; batch++) {
+                        const start = batch * BATCH_SIZE;
+                        const end = Math.min(start + BATCH_SIZE, 11);
+                        console.log(`\n--- Batch ${batch + 1}/${totalBatches}: pages ${start}-${end - 1} ---`);
 
-                        const imageUrl = await generateImageWithKie(prompt, allCharacterImageUrls);
+                        // Launch all pages in this batch in PARALLEL
+                        const batchPromises = [];
+                        for (let i = start; i < end; i++) {
+                            batchPromises.push(
+                                generateImageWithKie(kiePrompts[i], allCharacterImageUrls, globalSeed)
+                                    .then(url => ({ index: i, url, error: null as string | null }))
+                                    .catch(err => ({ index: i, url: null as string | null, error: err.message as string }))
+                            );
+                        }
 
+                        const results = await Promise.all(batchPromises);
 
-                        console.log(`Page ${i === 0 ? 'COVER' : i} generated: ${imageUrl.substring(0, 80)}...`);
-                        generatedImages.push(imageUrl);
+                        // Stream results to client (ordered by page)
+                        for (const r of results.sort((a, b) => a.index - b.index)) {
+                            if (r.url) {
+                                console.log(`Page ${r.index === 0 ? 'COVER' : r.index} done: ${r.url.substring(0, 60)}...`);
+                                generatedImages[r.index] = r.url;
+                                encode({ type: 'image', url: r.url, page: r.index });
 
-                        // Push image URL to client immediately
-                        encode({ type: 'image', url: imageUrl, page: i });
-
-                        // Save page to Supabase
-                        if (!_isTesting && _creationId) {
-                            await _supabase
-                                .from('creation_pages')
-                                .insert({
-                                    creation_id: _creationId,
-                                    page_number: i,
-                                    image_url: imageUrl,
-                                });
+                                if (!_isTesting && _creationId) {
+                                    await _supabase.from('creation_pages').insert({
+                                        creation_id: _creationId,
+                                        page_number: r.index,
+                                        image_url: r.url,
+                                    });
+                                }
+                            } else {
+                                console.error(`Page ${r.index} FAILED: ${r.error}`);
+                                encode({ type: 'error', page: r.index, message: r.error });
+                            }
                         }
                     }
 
                     // Finalize
+                    const successCount = generatedImages.filter(Boolean).length;
                     if (!_isTesting && _creationId && _profile && _user) {
-                        await _supabase
-                            .from('creations')
-                            .update({ status: 'completed' })
-                            .eq('id', _creationId);
-
-                        await _supabase
-                            .from('profiles')
-                            .update({ credits: _profile.credits - 1 })
-                            .eq('id', _user.id);
+                        await _supabase.from('creations').update({ status: 'completed' }).eq('id', _creationId);
+                        await _supabase.from('profiles').update({ credits: _profile.credits - 1 }).eq('id', _user.id);
                     }
 
-                    console.log('Generation complete!', generatedImages.length, 'images generated.');
+                    console.log(`Generation complete! ${successCount}/11 images generated.`);
                     encode({ type: 'done', creationId: _creationId });
 
                 } catch (err: any) {
