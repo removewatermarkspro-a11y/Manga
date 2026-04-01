@@ -47,7 +47,7 @@ function getSupabaseClient() {
 }
 
 // -------------------------------------------------------------------------------------------------
-// fetch with timeout (30s) + automatic retry (up to 3 attempts)
+// fetch with timeout + automatic retry
 async function fetchWithRetry(
     url: string,
     options: RequestInit,
@@ -66,28 +66,60 @@ async function fetchWithRetry(
             clearTimeout(timer);
             lastErr = err;
             const isLast = attempt === maxRetries;
-            console.warn(`fetchWithRetry attempt ${attempt}/${maxRetries} failed for ${url}: ${err.message}${isLast ? '' : ' — retrying...'}`);
-            if (!isLast) {
-                await new Promise(r => setTimeout(r, attempt * 1500)); // 1.5s, 3s, 4.5s
-            }
+            console.warn(`fetchWithRetry attempt ${attempt}/${maxRetries} for ${url}: ${err.message}${isLast ? '' : ' — retrying...'}`);
+            if (!isLast) await new Promise(r => setTimeout(r, attempt * 2000));
         }
     }
     throw lastErr;
 }
 
-// Kie API helper for nano-banana-2
-// Accepts raw base64 strings (without data URI prefix) OR public HTTP URLs
-async function generateImageWithKie(prompt: string, imageInput: string[]): Promise<string> {
-    const KIE_API_KEY = "0ebb274e201da9dd3487833efa368f65";
+// -------------------------------------------------------------------------------------------------
+// Upload base64 image to imgbb.com (free, reliable) and return a public URL
+// This is necessary because Kie's image_input ONLY accepts public HTTP URLs.
+async function uploadBase64ToPublicUrl(base64Str: string): Promise<string> {
+    // Strip data URI prefix if present
+    const rawB64 = base64Str.replace(/^data:image\/\w+;base64,/, '');
 
-    // Strip any "data:image/...;base64," prefixes — Kie expects raw base64 or plain URLs
-    const cleanedImages = imageInput.map(img =>
-        img.startsWith('data:image') ? img.replace(/^data:image\/\w+;base64,/, '') : img
+    // Try imgbb.com (free tier, 32MB/month, very reliable)
+    const imgbbKey = '44c4e51b3cb1cbc7aa2d89663bb6aa72'; // free API key
+    const formBody = new URLSearchParams();
+    formBody.append('key', imgbbKey);
+    formBody.append('image', rawB64);
+
+    console.log(`Uploading image to imgbb (${Math.round(rawB64.length / 1024)}KB base64)...`);
+
+    const res = await fetchWithRetry(
+        'https://api.imgbb.com/1/upload',
+        {
+            method: 'POST',
+            body: formBody,
+        },
+        3,
+        20000
     );
 
-    console.log(`Kie createTask — prompt length: ${prompt.length}, images: ${cleanedImages.length}`);
+    if (!res.ok) {
+        const text = await res.text().catch(() => 'no body');
+        throw new Error(`imgbb upload failed: HTTP ${res.status} — ${text.substring(0, 200)}`);
+    }
 
-    // 1. Create Task (with retry + timeout)
+    const data = await res.json();
+    if (data?.data?.url) {
+        console.log(`imgbb upload success: ${data.data.url}`);
+        return data.data.url;
+    }
+    throw new Error(`imgbb returned unexpected response: ${JSON.stringify(data).substring(0, 200)}`);
+}
+
+// -------------------------------------------------------------------------------------------------
+// Kie API helper for nano-banana-2
+// IMPORTANT: image_input MUST be an array of public HTTP URLs (not base64)
+async function generateImageWithKie(prompt: string, imageUrls: string[]): Promise<string> {
+    const KIE_API_KEY = "0ebb274e201da9dd3487833efa368f65";
+
+    console.log(`Kie createTask — prompt: ${prompt.length} chars, images: ${imageUrls.length} URLs`);
+    if (imageUrls.length > 0) console.log(`  First image URL: ${imageUrls[0].substring(0, 80)}...`);
+
     const createRes = await fetchWithRetry(
         "https://api.kie.ai/api/v1/jobs/createTask",
         {
@@ -100,7 +132,7 @@ async function generateImageWithKie(prompt: string, imageInput: string[]): Promi
                 model: "nano-banana-2",
                 input: {
                     prompt,
-                    image_input: cleanedImages,
+                    image_input: imageUrls,
                     aspect_ratio: "3:4",
                     resolution: "1K",
                     output_format: "jpg"
@@ -355,14 +387,32 @@ export async function POST(req: Request) {
         console.log('Step 1 complete!', pageDescriptions.length, 'page descriptions generated.');
 
         // ========================================================
-        // STEP 2: Prepare character images for Kie
+        // STEP 2: Upload character images to get public URLs
         // ========================================================
-        console.log('Step 2: Preparing image inputs...');
+        console.log('Step 2: Uploading character images to imgbb...');
 
-        // Pass images as raw base64 (Kie supports it — we strip the data URI prefix in generateImageWithKie)
-        // No external upload needed — eliminates ECONNRESET from freeimage.host
-        const allCharacterImages: string[] = characterList.map(c => c.image);
-        console.log(`Using ${allCharacterImages.length} character image(s) for Kie.`);
+        // Kie's image_input ONLY accepts public HTTP URLs
+        // So we upload each base64 image to imgbb.com first
+        const allCharacterImageUrls: string[] = [];
+        for (let ci = 0; ci < characterList.length; ci++) {
+            const c = characterList[ci];
+            try {
+                if (c.image.startsWith('data:image') || c.image.startsWith('/9j/')) {
+                    console.log(`Uploading character ${ci + 1} (${c.name}) image to imgbb...`);
+                    const publicUrl = await uploadBase64ToPublicUrl(c.image);
+                    allCharacterImageUrls.push(publicUrl);
+                } else if (c.image.startsWith('http')) {
+                    // Already a public URL
+                    allCharacterImageUrls.push(c.image);
+                } else {
+                    console.warn(`Character ${c.name}: unknown image format, skipping`);
+                }
+            } catch (uploadErr: any) {
+                console.error(`Failed to upload image for ${c.name}: ${uploadErr.message}. Will proceed without this image.`);
+            }
+        }
+
+        console.log(`Step 2 complete: ${allCharacterImageUrls.length} public URL(s) ready for Kie.`);
 
         console.log('Step 2: Streaming images with nano-banana-2...');
 
@@ -400,7 +450,7 @@ export async function POST(req: Request) {
                         console.log('=================================================');
 
 
-                        const imageUrl = await generateImageWithKie(fullPrompt, allCharacterImages);
+                        const imageUrl = await generateImageWithKie(fullPrompt, allCharacterImageUrls);
 
                         console.log(`Page ${isCover ? 'COVER' : i} generated: ${imageUrl.substring(0, 80)}...`);
                         generatedImages.push(imageUrl);
