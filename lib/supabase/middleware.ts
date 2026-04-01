@@ -41,7 +41,8 @@ export async function updateSession(request: NextRequest) {
     // Refresh the session - this is the key part
     const { data: { user } } = await supabase.auth.getUser();
 
-    // Protect routes that require authentication
+    // Protect routes that require authentication (TEMPORARILY DISABLED)
+    /*
     const protectedPaths = ['/my-creations', '/results'];
     const isProtectedRoute = protectedPaths.some(path =>
         request.nextUrl.pathname.startsWith(path)
@@ -53,6 +54,7 @@ export async function updateSession(request: NextRequest) {
         redirectUrl.searchParams.set('auth', 'required');
         return NextResponse.redirect(redirectUrl);
     }
+    */
 
     return response;
 }

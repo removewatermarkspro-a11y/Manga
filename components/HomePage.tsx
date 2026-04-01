@@ -177,7 +177,8 @@ export default function HomePage() {
     if (hasError && firstErrorElement) {
       firstErrorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
     } else if (!hasError) {
-      // Check if user is logged in first
+      // Check if user is logged in first (TEMPORARILY DISABLED FOR TESTING)
+      /* 
       if (!isLoggedIn) {
         // Save pending data then open auth popup
         const pendingData = {
@@ -196,6 +197,7 @@ export default function HomePage() {
         setIsAuthPopupOpen(true);
         return;
       }
+      */
 
       // Save generation data to localStorage for the pricing page
       const pendingData = {
