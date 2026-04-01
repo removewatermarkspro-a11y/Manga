@@ -47,97 +47,115 @@ function getSupabaseClient() {
 }
 
 // -------------------------------------------------------------------------------------------------
-// Helper: Upload base64 strings to a free image host, to provide valid HTTP URLs to Kie API
-// -------------------------------------------------------------------------------------------------
-async function uploadBase64ToFreeImage(base64Str: string): Promise<string> {
-    const b64 = base64Str.replace(/^data:image\/\w+;base64,/, '');
-
-    const body = new URLSearchParams();
-    // Public generic API key for freeimage.host, perfectly fine for temporary generations
-    body.append('key', '6d207e02198a847aa98d0a2a901485a5');
-    body.append('action', 'upload');
-    body.append('source', b64);
-    body.append('format', 'json');
-
-    const res = await fetch('https://freeimage.host/api/1/upload', {
-        method: 'POST',
-        body: body,
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded'
+// fetch with timeout (30s) + automatic retry (up to 3 attempts)
+async function fetchWithRetry(
+    url: string,
+    options: RequestInit,
+    maxRetries = 3,
+    timeoutMs = 30000
+): Promise<Response> {
+    let lastErr: Error = new Error('Unknown error');
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+            const res = await fetch(url, { ...options, signal: controller.signal });
+            clearTimeout(timer);
+            return res;
+        } catch (err: any) {
+            clearTimeout(timer);
+            lastErr = err;
+            const isLast = attempt === maxRetries;
+            console.warn(`fetchWithRetry attempt ${attempt}/${maxRetries} failed for ${url}: ${err.message}${isLast ? '' : ' — retrying...'}`);
+            if (!isLast) {
+                await new Promise(r => setTimeout(r, attempt * 1500)); // 1.5s, 3s, 4.5s
+            }
         }
-    });
-
-    if (!res.ok) {
-        console.error('FreeImage upload error HTTP status:', res.status);
-        throw new Error(`Failed to upload image to FreeImage: ${res.statusText}`);
     }
-
-    const data = await res.json();
-    if (data && data.image && data.image.url) {
-        return data.image.url;
-    }
-    throw new Error('Invalid response from FreeImage API');
+    throw lastErr;
 }
 
 // Kie API helper for nano-banana-2
+// Accepts raw base64 strings (without data URI prefix) OR public HTTP URLs
 async function generateImageWithKie(prompt: string, imageInput: string[]): Promise<string> {
     const KIE_API_KEY = "0ebb274e201da9dd3487833efa368f65";
-    
-    // 1. Create Task
-    const createRes = await fetch("https://api.kie.ai/api/v1/jobs/createTask", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${KIE_API_KEY}`
+
+    // Strip any "data:image/...;base64," prefixes — Kie expects raw base64 or plain URLs
+    const cleanedImages = imageInput.map(img =>
+        img.startsWith('data:image') ? img.replace(/^data:image\/\w+;base64,/, '') : img
+    );
+
+    console.log(`Kie createTask — prompt length: ${prompt.length}, images: ${cleanedImages.length}`);
+
+    // 1. Create Task (with retry + timeout)
+    const createRes = await fetchWithRetry(
+        "https://api.kie.ai/api/v1/jobs/createTask",
+        {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${KIE_API_KEY}`
+            },
+            body: JSON.stringify({
+                model: "nano-banana-2",
+                input: {
+                    prompt,
+                    image_input: cleanedImages,
+                    aspect_ratio: "3:4",
+                    resolution: "1K",
+                    output_format: "jpg"
+                }
+            })
         },
-        body: JSON.stringify({
-            model: "nano-banana-2",
-            input: {
-                prompt: prompt,
-                image_input: imageInput,
-                aspect_ratio: "3:4",
-                resolution: "1K",
-                output_format: "jpg"
-            }
-        })
-    });
-    
+        3,
+        30000
+    );
+
     if (!createRes.ok) {
         let errMessage = 'Create Task failed';
-        try {
-            const errData = await createRes.json();
-            errMessage = JSON.stringify(errData);
-        } catch(e) {}
-        throw new Error(`Kie API Create Error: ${createRes.status} - ${errMessage}`);
+        try { errMessage = JSON.stringify(await createRes.json()); } catch (_) {}
+        throw new Error(`Kie API Create Error: ${createRes.status} — ${errMessage}`);
     }
-    
+
     const createData = await createRes.json();
     if (createData.code !== 200 || !createData.data?.taskId) {
         throw new Error(`Kie API Create Error: ${JSON.stringify(createData)}`);
     }
-    
+
     const taskId = createData.data.taskId;
-    
-    // 2. Poll Task Status
-    while (true) {
-        await new Promise(resolve => setTimeout(resolve, 3000)); // Poll every 3 seconds
-        
-        const pollRes = await fetch(`https://api.kie.ai/api/v1/jobs/recordInfo?taskId=${taskId}`, {
-            method: "GET",
-            headers: {
-                "Authorization": `Bearer ${KIE_API_KEY}`
-            }
-        });
-        
-        if (!pollRes.ok) {
-            continue; // Retry on transient HTTP errors
+    console.log(`Kie task created: ${taskId}`);
+
+    // 2. Poll Task Status (with retry on each poll, max 120 polls à 3s = 6 min)
+    for (let poll = 0; poll < 120; poll++) {
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
+        let pollRes: Response;
+        try {
+            pollRes = await fetchWithRetry(
+                `https://api.kie.ai/api/v1/jobs/recordInfo?taskId=${taskId}`,
+                {
+                    method: "GET",
+                    headers: { "Authorization": `Bearer ${KIE_API_KEY}` }
+                },
+                3,
+                15000
+            );
+        } catch (pollErr) {
+            console.warn(`Poll ${poll + 1} failed, continuing...`);
+            continue;
         }
-        
+
+        if (!pollRes.ok) {
+            console.warn(`Poll ${poll + 1}: HTTP ${pollRes.status}, continuing...`);
+            continue;
+        }
+
         const pollData = await pollRes.json();
-        
+
         if (pollData.code === 200 && pollData.data) {
             const state = pollData.data.state;
-            
+            console.log(`Poll ${poll + 1}: state = ${state}`);
+
             if (state === "success") {
                 try {
                     const resultJson = JSON.parse(pollData.data.resultJson);
@@ -146,11 +164,13 @@ async function generateImageWithKie(prompt: string, imageInput: string[]): Promi
                     throw new Error(`Failed to parse result URL: ${pollData.data.resultJson}`);
                 }
             } else if (state === "fail") {
-                throw new Error(`Task failed: ${pollData.data.failMsg}`);
+                throw new Error(`Kie task failed: ${pollData.data.failMsg}`);
             }
-            // If "waiting", loop continues
+            // state === "waiting" or "running" — keep polling
         }
     }
+
+    throw new Error('Kie task timed out after 6 minutes');
 }
 
 export async function POST(req: Request) {
@@ -335,21 +355,14 @@ export async function POST(req: Request) {
         console.log('Step 1 complete!', pageDescriptions.length, 'page descriptions generated.');
 
         // ========================================================
-        // STEP 2: Upload character images then stream via SSE
+        // STEP 2: Prepare character images for Kie
         // ========================================================
         console.log('Step 2: Preparing image inputs...');
 
-        // Convert any data URIs to actual public HTTP URLs for Kie API
-        const allCharacterImages: string[] = [];
-        for (const c of characterList) {
-            if (c.image.startsWith('data:image')) {
-                console.log(`Uploading base64 image for character ${c.name}...`);
-                const url = await uploadBase64ToFreeImage(c.image);
-                allCharacterImages.push(url);
-            } else {
-                allCharacterImages.push(c.image);
-            }
-        }
+        // Pass images as raw base64 (Kie supports it — we strip the data URI prefix in generateImageWithKie)
+        // No external upload needed — eliminates ECONNRESET from freeimage.host
+        const allCharacterImages: string[] = characterList.map(c => c.image);
+        console.log(`Using ${allCharacterImages.length} character image(s) for Kie.`);
 
         console.log('Step 2: Streaming images with nano-banana-2...');
 
