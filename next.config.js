@@ -7,7 +7,8 @@ const nextConfig = {
             { protocol: 'https', hostname: 'replicate.delivery' },
             { protocol: 'https', hostname: '*.replicate.delivery' },
             { protocol: 'https', hostname: 'replicate.com' },
-            { protocol: 'https', hostname: '*.replicate.com' }
+            { protocol: 'https', hostname: '*.replicate.com' },
+            { protocol: 'https', hostname: 'static.aiquickdraw.com' }
         ],
     },
     eslint: {
@@ -16,10 +17,8 @@ const nextConfig = {
     typescript: {
         ignoreBuildErrors: true,
     },
-    experimental: {
-        serverActions: {
-            bodySizeLimit: '10mb',
-        },
+    serverActions: {
+        bodySizeLimit: '10mb',
     },
 }
 
