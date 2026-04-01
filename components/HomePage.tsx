@@ -95,7 +95,11 @@ export default function HomePage() {
 
   const openAuthPopup = () => setIsAuthPopupOpen(true);
   const closeAuthPopup = () => setIsAuthPopupOpen(false);
-  const openAddCharacterPopup = () => setIsAddCharacterPopupOpen(true);
+  // Skip AddCharacterPopup — open CreateCharacterPopup directly
+  const openAddCharacterPopup = () => {
+    setEditingCharacter(null);
+    setIsCreateCharacterPopupOpen(true);
+  };
   const closeAddCharacterPopup = () => setIsAddCharacterPopupOpen(false);
   const openCreateCharacterPopup = () => {
     setIsAddCharacterPopupOpen(false);

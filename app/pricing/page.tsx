@@ -490,199 +490,164 @@ export default function PricingPage() {
             </header>
 
             {/* Main Content */}
-            <main className="max-w-7xl mx-auto px-4 py-2 md:py-3 flex flex-col" style={{ minHeight: 'calc(100vh - 90px)' }}>
-                <div className="flex flex-col xl:flex-row gap-4 xl:gap-6 xl:items-stretch w-full flex-1">
+            <main className="max-w-7xl mx-auto px-4 py-2 md:py-4 flex flex-col" style={{ minHeight: 'calc(100vh - 90px)' }}>
 
-                {/* Left Column: Title & Preview */}
-                <div className="w-full xl:w-[35%] flex flex-col items-center xl:items-start max-w-2xl mx-auto xl:mx-0 h-full">
-                    {/* Stylized Title Section */}
-                    <div className="text-center xl:text-left mb-2 md:mb-3 w-full flex flex-col items-center xl:items-start justify-end">
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.5 }}
-                    >
-                        <span className="inline-block py-1 md:py-1.5 px-2 md:px-3 bg-white border-[2px] border-black rounded-full text-black font-black text-[10px] md:text-xs uppercase tracking-widest shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] md:shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] mb-3 md:mb-4 transform -rotate-2">
-                            Download Your Generation
-                        </span>
-                        <h1 className="text-2xl md:text-4xl lg:text-4xl xl:text-5xl font-black leading-tight tracking-wider font-display uppercase drop-shadow-sm mb-1 md:mb-2">
-                            {getStyleTitlePrefix()} <br className="hidden xl:block" /><span className="text-transparent bg-clip-text bg-gradient-to-r from-[#6366f1] to-[#8b5cf6]">READY!</span>
-                        </h1>
-                        <p className="text-xs md:text-base font-bold text-gray-700">
-                            Your creation is complete and waiting for you. Get Pro to download.
-                        </p>
-                    </motion.div>
-                </div>
+                {/* Top Title — full width */}
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5 }}
+                    className="text-center mb-4 md:mb-5"
+                >
+                    <span className="inline-block py-1 px-2 bg-white border-[2px] border-black rounded-full text-black font-black text-[10px] md:text-xs uppercase tracking-widest shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] mb-2 transform -rotate-2">
+                        Download Your Generation
+                    </span>
+                    <h1 className="text-2xl md:text-4xl xl:text-5xl font-black leading-tight tracking-wider font-display uppercase drop-shadow-sm">
+                        {getStyleTitlePrefix()} <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#6366f1] to-[#8b5cf6]">READY!</span>
+                    </h1>
+                    <p className="text-xs md:text-sm font-bold text-gray-600 mt-1">
+                        Your creation is complete. Choose a plan to download it.
+                    </p>
+                </motion.div>
 
-                {/* Results Section */}
-                <div className="w-full flex-1 flex flex-col justify-center relative bg-white border-[3px] md:border-[4px] border-black rounded-2xl md:rounded-3xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] md:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] py-3 px-2 md:p-4 overflow-hidden min-h-[180px] md:min-h-0">
-                    {/* Background Image */}
-                    <div className="absolute inset-0 pointer-events-none">
-                        <Image
-                            src="/images/comic-rays-bg.jpg"
-                            alt=""
-                            fill
-                            className="object-cover opacity-[0.1]"
-                        />
-                    </div>
+                {/* Two-column layout: preview left, pricing right */}
+                <div className="flex flex-col xl:flex-row gap-4 xl:gap-6 items-stretch flex-1">
 
-                    {/* Preview Box */}
-                    <div className="relative z-10 mb-2 md:mb-4">
-                        <div className={`${getAspectRatio()} w-[120px] sm:w-[180px] md:w-full md:max-w-sm mx-auto bg-gray-100 border-[3px] md:border-[4px] border-black rounded-xl md:rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden flex items-center justify-center`}>
-                            {/* Blurred Background Image */}
-                            <div className="absolute inset-0">
+                    {/* Left: Blurred Preview */}
+                    <div className="w-full xl:w-[38%] flex flex-col">
+                        <div className="flex-1 relative bg-white border-[4px] border-black rounded-2xl shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] overflow-hidden" style={{ minHeight: '280px' }}>
+                            {/* Background Image */}
+                            <div className="absolute inset-0 pointer-events-none">
                                 <Image
-                                    src="/images/feature-1-main.jpg"
-                                    alt="Blurred Preview"
+                                    src="/images/comic-rays-bg.jpg"
+                                    alt=""
                                     fill
-                                    className="object-cover blur-3xl scale-110"
+                                    className="object-cover opacity-[0.1]"
                                 />
-                                {/* Optional overlay to improve text contrast if needed */}
-                                <div className="absolute inset-0 bg-white/40" />
                             </div>
 
-                            {/* Lock Icon and Text */}
-                            <div
-                                onClick={() => document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' })}
-                                className="relative z-10 text-center p-4 md:p-6 bg-white rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:scale-105 transition-transform max-w-[80%] mx-auto"
+                            {/* Preview Box */}
+                            <div className="relative z-10 flex items-center justify-center h-full p-4">
+                                <div className={`${getAspectRatio()} w-[140px] sm:w-[180px] md:w-[220px] xl:w-[200px] bg-gray-100 border-[3px] border-black rounded-xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden flex items-center justify-center`}>
+                                    {/* Blurred Background Image */}
+                                    <div className="absolute inset-0">
+                                        <Image
+                                            src="/images/feature-1-main.jpg"
+                                            alt="Blurred Preview"
+                                            fill
+                                            className="object-cover blur-3xl scale-110"
+                                        />
+                                        <div className="absolute inset-0 bg-white/40" />
+                                    </div>
+
+                                    {/* Lock Icon and Text */}
+                                    <div
+                                        onClick={() => document.getElementById('pricing')?.scrollIntoView({ behavior: 'smooth' })}
+                                        className="relative z-10 text-center p-4 bg-white rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer hover:scale-105 transition-transform max-w-[80%] mx-auto"
+                                    >
+                                        <Lock className="w-8 h-8 md:w-10 md:h-10 mx-auto mb-2 text-black" />
+                                        <p className="text-sm md:text-base font-black text-black mb-0.5">Locked</p>
+                                        <p className="text-[10px] sm:text-xs font-bold text-gray-700 leading-tight">Upgrade to Pro to view</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Right: Pricing Section */}
+                    <div id="pricing" className="w-full xl:w-[62%] flex flex-col">
+                        <div className="text-center mb-3">
+                            <h3 className="text-xl md:text-2xl font-black text-black font-display">
+                                Choose your package <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#6366f1] to-[#8b5cf6]">now:</span>
+                            </h3>
+                        </div>
+
+                        {/* Pricing Grid */}
+                        <div className="grid md:grid-cols-2 gap-3 lg:gap-4 flex-1">
+                            {/* Monthly Plan */}
+                            <motion.div
+                                whileHover={{ scale: 1.02, y: -3 }}
+                                onClick={() => setSelectedPlan('monthly')}
+                                className={`relative border-[4px] border-black rounded-2xl p-4 lg:p-5 cursor-pointer transition-all ${selectedPlan === 'monthly' ? 'bg-[#facc15] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]' : 'bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]'} z-10 flex flex-col`}
                             >
-                                <Lock className="w-10 h-10 md:w-16 md:h-16 mx-auto mb-2 md:mb-4 text-black" />
-                                <p className="text-lg md:text-xl font-black text-black mb-1 md:mb-2">Locked</p>
-                                <p className="text-[10px] sm:text-xs md:text-sm font-bold text-gray-900 leading-tight">Upgrade to Pro<br className="sm:hidden" /> to view</p>
+                                <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-black text-white px-3 py-0.5 rounded-full text-[10px] font-bold border-2 border-white">
+                                    PREFERRED
+                                </div>
+                                <div className="text-center flex flex-col h-full justify-between">
+                                    <div>
+                                        <h4 className="text-lg font-black mb-1">Formule Abonnement</h4>
+                                        <div className="mb-3">
+                                            <span className="text-3xl font-black">€9.90</span>
+                                            <span className="text-xs font-bold opacity-70">/month</span>
+                                        </div>
+                                        <ul className="text-left space-y-2 mb-4 text-sm">
+                                            {['10 generated comics / month', 'Commercial Use', 'No Watermark'].map(f => (
+                                                <li key={f} className="flex items-center gap-2 font-bold">
+                                                    <span className={`w-5 h-5 rounded-full flex items-center justify-center border-2 border-black shrink-0 ${selectedPlan === 'monthly' ? 'bg-black text-yellow-400' : 'bg-[#facc15] text-black'}`}>
+                                                        <Check className="w-3 h-3" />
+                                                    </span>
+                                                    {f}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); handlePlanSelect(); }}
+                                        className="w-full py-2.5 rounded-xl border-[3px] border-black font-black text-base shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-transform active:translate-y-1 active:shadow-none bg-white mt-2"
+                                    >
+                                        Get Started
+                                    </button>
+                                </div>
+                            </motion.div>
+
+                            {/* One Time Payment */}
+                            <motion.div
+                                whileHover={{ scale: 1.02, y: -3 }}
+                                onClick={() => setSelectedPlan('onetime')}
+                                className={`relative border-[4px] border-black rounded-2xl p-4 lg:p-5 cursor-pointer transition-all ${selectedPlan === 'onetime' ? 'bg-[#facc15] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]' : 'bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]'} flex flex-col`}
+                            >
+                                <div className="text-center flex flex-col h-full justify-between">
+                                    <div>
+                                        <h4 className="text-lg font-black mb-1">One Time Payment</h4>
+                                        <div className="mb-3">
+                                            <span className="text-3xl font-black">€14.90</span>
+                                            <span className="text-xs font-bold opacity-70">/once</span>
+                                        </div>
+                                        <ul className="text-left space-y-2 mb-4 text-sm">
+                                            {['1 generated comic', 'Commercial Use', 'No Watermark'].map(f => (
+                                                <li key={f} className="flex items-center gap-2 font-bold">
+                                                    <span className={`w-5 h-5 rounded-full flex items-center justify-center border-2 border-black shrink-0 ${selectedPlan === 'onetime' ? 'bg-black text-yellow-400' : 'bg-[#facc15] text-black'}`}>
+                                                        <Check className="w-3 h-3" />
+                                                    </span>
+                                                    {f}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); handlePlanSelect(); }}
+                                        className="w-full py-2.5 rounded-xl border-[3px] border-black font-black text-base shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-transform active:translate-y-1 active:shadow-none bg-white mt-2"
+                                    >
+                                        Get Started
+                                    </button>
+                                </div>
+                            </motion.div>
+                        </div>
+
+                        {/* Cancel Anytime */}
+                        <div className="mt-3 text-center">
+                            <div className="inline-flex items-center gap-2 bg-white/90 px-4 py-2 rounded-full border-[2px] border-black/10 shadow-sm text-xs text-black font-bold">
+                                <Check className="w-3.5 h-3.5 text-green-600" />
+                                Cancel anytime <span className="text-gray-400 mx-1">•</span>
+                                <Check className="w-3.5 h-3.5 text-green-600" />
+                                No commitment <span className="text-gray-400 mx-1">•</span>
+                                <Check className="w-3.5 h-3.5 text-green-600" />
+                                Secure checkout
                             </div>
                         </div>
                     </div>
                 </div>
-                </div>
-
-                {/* Right Column: Pricing Section */}
-                <div id="pricing" className="w-full xl:w-[65%] flex flex-col max-w-5xl mx-auto xl:mx-0 mt-4 xl:mt-0 relative h-full">
-                    <div className="text-center mb-2 md:mb-4 flex flex-col justify-end mt-2 md:mt-0">
-                        <h3 className="text-xl md:text-3xl font-black text-black font-display mb-1 md:mb-2">
-                            Choose your package <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#6366f1] to-[#8b5cf6]">now:</span>
-                        </h3>
-                    </div>
-
-                    {/* Pricing Grid */}
-                    <div className="grid md:grid-cols-2 gap-3 lg:gap-6 max-w-4xl mx-auto w-full xl:px-0 flex-1">
-                        {/* Monthly Plan - 10 Comics */}
-                        <motion.div
-                            whileHover={{ scale: 1.02, y: -5 }}
-                            onClick={() => setSelectedPlan('monthly')}
-                            className={`relative border-[4px] border-black rounded-3xl p-5 lg:p-6 cursor-pointer transition-all ${selectedPlan === 'monthly' ? 'bg-[#facc15] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]' : 'bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]'} hover:scale-[1.02] hover:-translate-y-1 z-10 flex flex-col h-full`}
-                        >
-                            <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-black text-white px-4 py-1 rounded-full text-xs font-bold border-2 border-white">
-                                PREFERRED
-                            </div>
-                            <div className="text-center flex flex-col h-full justify-between">
-                                <div>
-                                    <h4 className="text-xl font-black mb-2">Formule Abonnement</h4>
-                                    <div className="mb-4">
-                                        <span className="text-3xl font-black">€9.90</span>
-                                        <span className="text-xs font-bold opacity-70">/month</span>
-                                    </div>
-                                    <div className="inline-block bg-transparent text-transparent px-2 py-1 rounded-md text-xs font-bold mb-6 border border-transparent">
-                                        &nbsp;
-                                    </div>
-                                    <ul className="text-left space-y-3 mb-6 text-sm">
-                                        <li className="flex items-center gap-3 font-bold">
-                                            <span className={`w-6 h-6 rounded-full flex items-center justify-center border-2 border-black shrink-0 ${selectedPlan === 'monthly' ? 'bg-black text-yellow-400' : 'bg-[#facc15] text-black'}`}>
-                                                <Check className="w-3.5 h-3.5" />
-                                            </span>
-                                            10 generated comics / month
-                                        </li>
-                                        <li className="flex items-center gap-3 font-bold">
-                                            <span className={`w-6 h-6 rounded-full flex items-center justify-center border-2 border-black shrink-0 ${selectedPlan === 'monthly' ? 'bg-black text-yellow-400' : 'bg-[#facc15] text-black'}`}>
-                                                <Check className="w-3.5 h-3.5" />
-                                            </span>
-                                            Commercial Use
-                                        </li>
-                                        <li className="flex items-center gap-3 font-bold">
-                                            <span className={`w-6 h-6 rounded-full flex items-center justify-center border-2 border-black shrink-0 ${selectedPlan === 'monthly' ? 'bg-black text-yellow-400' : 'bg-[#facc15] text-black'}`}>
-                                                <Check className="w-3.5 h-3.5" />
-                                            </span>
-                                            No Watermark
-                                        </li>
-                                    </ul>
-                                </div>
-                                <button 
-                                    onClick={(e) => { e.stopPropagation(); handlePlanSelect(); }}
-                                    className="w-full py-2.5 rounded-xl border-[3px] border-black font-black text-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-transform active:translate-y-1 active:shadow-none bg-white mt-4"
-                                >
-                                    Get Started
-                                </button>
-                            </div>
-                        </motion.div>
-
-                        {/* One Time Payment - 1 Comic */}
-                        <motion.div
-                            whileHover={{ scale: 1.02, y: -5 }}
-                            onClick={() => setSelectedPlan('onetime')}
-                            className={`relative border-[4px] border-black rounded-3xl p-5 lg:p-6 cursor-pointer transition-all ${selectedPlan === 'onetime' ? 'bg-[#facc15] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]' : 'bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]'} hover:scale-[1.02] hover:-translate-y-1 flex flex-col h-full`}
-                        >
-                            <div className="text-center flex flex-col h-full justify-between">
-                                <div>
-                                    <h4 className="text-xl font-black mb-2">One Time Payment</h4>
-                                    <div className="mb-4">
-                                        <span className="text-3xl font-black">€14.90</span>
-                                        <span className="text-xs font-bold opacity-70">/once</span>
-                                    </div>
-                                    <div className="inline-block bg-transparent text-transparent px-2 py-1 rounded-md text-xs font-bold mb-6 border border-transparent">
-                                        &nbsp;
-                                    </div>
-                                    <ul className="text-left space-y-3 mb-6 text-sm">
-                                        <li className="flex items-center gap-3 font-bold">
-                                            <span className={`w-6 h-6 rounded-full flex items-center justify-center border-2 border-black shrink-0 ${selectedPlan === 'onetime' ? 'bg-black text-yellow-400' : 'bg-[#facc15] text-black'}`}>
-                                                <Check className="w-3.5 h-3.5" />
-                                            </span>
-                                            1 generated comic
-                                        </li>
-                                        <li className="flex items-center gap-3 font-bold">
-                                            <span className={`w-6 h-6 rounded-full flex items-center justify-center border-2 border-black shrink-0 ${selectedPlan === 'onetime' ? 'bg-black text-yellow-400' : 'bg-[#facc15] text-black'}`}>
-                                                <Check className="w-3.5 h-3.5" />
-                                            </span>
-                                            Commercial Use
-                                        </li>
-                                        <li className="flex items-center gap-3 font-bold">
-                                            <span className={`w-6 h-6 rounded-full flex items-center justify-center border-2 border-black shrink-0 ${selectedPlan === 'onetime' ? 'bg-black text-yellow-400' : 'bg-[#facc15] text-black'}`}>
-                                                <Check className="w-3.5 h-3.5" />
-                                            </span>
-                                            No Watermark
-                                        </li>
-                                    </ul>
-                                </div>
-                                <button 
-                                    onClick={(e) => { e.stopPropagation(); handlePlanSelect(); }}
-                                    className="w-full py-2.5 rounded-xl border-[3px] border-black font-black text-lg shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-transform active:translate-y-1 active:shadow-none bg-white mt-4"
-                                >
-                                    Get Started
-                                </button>
-                            </div>
-                        </motion.div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Cancel Anytime (Below Columns) */}
-            <div className="mt-3 md:mt-4 mb-2 text-center w-full">
-                <div className="hidden md:inline-flex items-center gap-2 bg-white/90 px-6 py-2 rounded-full border-[2px] border-black/10 shadow-sm mx-auto text-sm text-black font-bold whitespace-nowrap">
-                    <Check className="w-4 h-4 text-green-600" />
-                    Cancel anytime <span className="text-gray-400 mx-1">•</span>
-                    <Check className="w-4 h-4 text-green-600" />
-                    No commitment required <span className="text-gray-400 mx-1">•</span>
-                    <Check className="w-4 h-4 text-green-600" />
-                    Secure checkout
-                </div>
-                {/* Mobile variant */}
-                <div className="md:hidden inline-flex items-center justify-center flex-wrap gap-1.5 bg-white/90 px-4 py-2 rounded-full border-[2px] border-black/10 shadow-sm mx-auto text-xs text-black font-bold">
-                    <Check className="w-3.5 h-3.5 text-green-600 shrink-0" />
-                    <span>Cancel anytime</span>
-                    <span className="text-gray-400 mx-0.5">•</span>
-                    <Check className="w-3.5 h-3.5 text-green-600 shrink-0" />
-                    <span>Secure checkout</span>
-                </div>
-            </div>
-        </main>
+            </main>
 
             {/* Loading Popup for Real Generation */}
             <LoadingPopup
