@@ -265,14 +265,17 @@ export async function POST(req: Request) {
         }
 
         const characterDescriptions = characterList.map((c, i) => {
-            return `Character ${i + 1}: Name="${c.name}", Role=${c.role}. A photo of this character is provided — keep their exact face, hair, skin tone, and eye color in every panel they appear.`;
+            return `Character ${i + 1}: Name="${c.name}", Role=${c.role}. Reference photo provided — keep exact face, hair, and features.`;
         }).join('\n');
 
-        const characterSummary = characterList.map(c => c.name).join(', ');
+        const characterNames = characterList.map(c => c.name).join(' and ');
+        const characterSummary = characterList.map(c => `${c.name} (${c.role})`).join(', ');
 
-        const llamaSystemPrompt = `You are an expert ${styleInstruction} comic book art director AND storyteller. Your job is to write page-by-page IMAGE GENERATION PROMPTS for a comic book. Each prompt will be sent directly to an AI image generator, so it must be an extremely detailed visual description, NOT a script. You must output ONLY a valid JSON array of exactly 11 strings. No markdown, no explanation, no code fences. Just the raw JSON array.`;
+        // LLaMA generates short, Kie-optimized image prompts (not long narratives)
+        const llamaSystemPrompt = `You are an AI image prompt writer for a ${styleInstruction} comic book generator. Your output goes DIRECTLY to an image AI (Kie Nano-Banana 2). You must write SHORT, VISUAL, CONCRETE image generation prompts. Each prompt must be under 100 words. Focus on: what you SEE in the image, character poses, expressions, setting, lighting, dialogue in speech bubbles. Do NOT write plot summaries or narrative text. Output ONLY a valid JSON array of exactly 11 strings. No markdown, no code fences, just the raw JSON array.`;
 
-        const llamaUserPrompt = `Create an 11-page ${styleInstruction} comic book based on this story: "${storyText}"\n\nCHARACTERS IN THIS STORY:\n${characterDescriptions}\n\nOUTPUT FORMAT: A JSON array of 11 strings. Each string is a detailed IMAGE GENERATION PROMPT for one page. Here is exactly what each string must contain:\n\nSTRING 0 — COVER PAGE:\nDescribe a single stunning illustration (NOT a multi-panel page). Include: the title "${storyText}" written in large stylized letters at the top or center, the main characters (${characterSummary}) in a dramatic heroic pose, the setting atmosphere, lighting, and mood. Keep it clean — just the cover illustration and title text, nothing else. No panels, no speech bubbles.\n\nSTRINGS 1-10 — STORY PAGES (must directly follow the story of "${storyText}"):\nEach string must describe ONE FULL COMIC PAGE with exactly 3 panels. For EACH panel, specify:\n- Panel position on the page (e.g., "Top wide panel", "Bottom-left panel", "Bottom-right panel")\n- Exact scene action happening in that moment of the story\n- Character(s) present: use their exact name, describe their emotion, body pose, gesture\n- Exact dialogue text in speech bubble for each character speaking (write the actual words)\n- Background details: location, time of day, lighting\n- Camera angle (close-up, medium shot, wide shot, over-the-shoulder, etc.)\n\nNARRATIVE ARC (follow this for strings 1-10):\n- Pages 1-2: Introduce the characters and setting, establish the situation\n- Pages 3-4: First conflict or challenge arises\n- Pages 5-6: Surprising twist or complication\n- Pages 7-8: Climax — most intense moment\n- Pages 9-10: Resolution and satisfying ending\n\nCRITICAL RULES:\n- Every page description MUST reference the exact story "${storyText}" — do not drift or invent unrelated scenes\n- Characters must be in EVERY panel with their exact name mentioned\n- Dialogue must be natural, short, and in-character (max 10 words per speech bubble)\n- Page descriptions must flow logically from one page to the next — this is a continuous story\n- Write all descriptions in English\n- Be very specific about visuals: colors, expressions, clothing, environment\n\nOutput the JSON array now:`;
+        const llamaUserPrompt = `Write 11 image generation prompts for a ${styleInstruction} comic book about: "${storyText}"\n\nCHARACTERS: ${characterSummary}\nREFERENCE PHOTOS of characters are provided — always mention "[character name] from the reference photo".\n\nARRAY STRUCTURE:\n- Index 0: COVER PAGE prompt. Single dramatic illustration of ${characterNames}. Story title "${storyText}" in large stylized text. No panels. Epic pose, moody lighting.\n- Index 1-10: One COMIC PAGE prompt each, in story order. Each prompt describes a PAGE with 3 panels. For each panel: describe the exact scene, ${characterNames}'s pose and emotion, the background, and write the exact speech bubble dialogue in quotes.\n\nSTORY ARC for pages 1-10:\n- Pages 1-2: Opening scene, introduce characters and situation\n- Pages 3-4: Conflict or challenge rises\n- Pages 5-6: Twist or complication\n- Pages 7-8: Climax action\n- Pages 9-10: Resolution and ending\n\nEXAMPLE of a good prompt for one page:\n"${styleKeywords}. Full comic book page, 3 panels. Top panel (wide shot): ${characterNames} walks through a crowded marketplace, looking nervous, hand on pocket, golden sunset background. Middle panel (close-up): ${characterNames}'s eyes widen in shock, speech bubble says 'They found me!'. Bottom panel (medium shot): A hooded figure emerges from shadows behind ${characterNames}, pointing. Urban street background, tense atmosphere."\n\nNow write all 11 prompts following this exact structure. Output the JSON array:`;
+
 
         const llamaOutput = await replicate.run(
             "meta/meta-llama-3-8b-instruct",
@@ -372,14 +375,17 @@ export async function POST(req: Request) {
                         const pageDesc = pageDescriptions[i];
                         const isCover = i === 0;
 
-                        let fullPrompt = '';
-                        if (isCover) {
-                            fullPrompt = `${styleKeywords}. COVER PAGE — single clean illustration. ${pageDesc}. Reference character photos provided — keep exact likeness. No panels, no page borders. High quality dramatic cover art.`;
-                        } else {
-                            fullPrompt = `${styleKeywords}. COMIC PAGE with 3 distinct panels arranged vertically or in a classic comic grid. Follow this exact visual script for each panel: ${pageDesc}. Characters must match the provided reference photos exactly — same face, hair, and features. Include speech bubbles with the exact dialogue text written in the description. Each panel must directly continue the story. Professional comic book page layout.`;
-                        }
+                        // LLaMA already generates Kie-optimized prompts
+                        // Just prepend the style keywords for consistency
+                        const fullPrompt = isCover
+                            ? `${styleKeywords}. ${pageDesc}`
+                            : `${styleKeywords}. ${pageDesc}. Characters must match the provided reference photos exactly.`;
 
-                        console.log(`Generating page ${isCover ? 'COVER' : i}/10...`);
+                        // Log the full prompt for debugging
+                        console.log(`\n=== PAGE ${isCover ? 'COVER' : i} PROMPT (${fullPrompt.length} chars) ===`);
+                        console.log(fullPrompt.substring(0, 400) + (fullPrompt.length > 400 ? '...' : ''));
+                        console.log('=================================================');
+
 
                         const imageUrl = await generateImageWithKie(fullPrompt, allCharacterImages);
 
