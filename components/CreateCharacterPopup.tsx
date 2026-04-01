@@ -27,14 +27,32 @@ export default function CreateCharacterPopup({ isOpen, onClose, onBack, onCharac
 
     const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setUploadedImage(reader.result as string);
-                setErrors(prev => ({ ...prev, photo: false }));
-            };
-            reader.readAsDataURL(file);
-        }
+        if (!file) return;
+
+        const img = new window.Image();
+        img.onload = () => {
+            // Resize to max 512px while keeping aspect ratio
+            const MAX = 512;
+            let w = img.width;
+            let h = img.height;
+            if (w > MAX || h > MAX) {
+                if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+                else       { w = Math.round(w * MAX / h); h = MAX; }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+            ctx.drawImage(img, 0, 0, w, h);
+            // Export as JPEG at 70% quality → ~50-100KB
+            const compressed = canvas.toDataURL('image/jpeg', 0.7);
+            console.log(`Image compressed: ${Math.round(compressed.length / 1024)}KB`);
+            setUploadedImage(compressed);
+            setErrors(prev => ({ ...prev, photo: false }));
+            URL.revokeObjectURL(img.src);
+        };
+        img.src = URL.createObjectURL(file);
     };
 
     const resetForm = () => {
