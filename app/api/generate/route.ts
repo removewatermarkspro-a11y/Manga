@@ -46,6 +46,39 @@ function getSupabaseClient() {
     );
 }
 
+// -------------------------------------------------------------------------------------------------
+// Helper: Upload base64 strings to a free image host, to provide valid HTTP URLs to Kie API
+// -------------------------------------------------------------------------------------------------
+async function uploadBase64ToFreeImage(base64Str: string): Promise<string> {
+    const b64 = base64Str.replace(/^data:image\/\w+;base64,/, '');
+
+    const body = new URLSearchParams();
+    // Public generic API key for freeimage.host, perfectly fine for temporary generations
+    body.append('key', '6d207e02198a847aa98d0a2a901485a5');
+    body.append('action', 'upload');
+    body.append('source', b64);
+    body.append('format', 'json');
+
+    const res = await fetch('https://freeimage.host/api/1/upload', {
+        method: 'POST',
+        body: body,
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }
+    });
+
+    if (!res.ok) {
+        console.error('FreeImage upload error HTTP status:', res.status);
+        throw new Error(`Failed to upload image to FreeImage: ${res.statusText}`);
+    }
+
+    const data = await res.json();
+    if (data && data.image && data.image.url) {
+        return data.image.url;
+    }
+    throw new Error('Invalid response from FreeImage API');
+}
+
 // Kie API helper for nano-banana-2
 async function generateImageWithKie(prompt: string, imageInput: string[]): Promise<string> {
     const KIE_API_KEY = "0ebb274e201da9dd3487833efa368f65";
@@ -323,10 +356,22 @@ Output the JSON array now:`;
         // ========================================================
         // STEP 2: Generate images one by one with nano-banana-2
         // ========================================================
-        console.log('Step 2: Generating images with nano-banana-2...');
+        console.log('Step 2: Preparing image inputs...');
 
+        // Convert any data URIs to actual public HTTP URLs for Kie API
+        const allCharacterImages: string[] = [];
+        for (const c of characterList) {
+            if (c.image.startsWith('data:image')) {
+                console.log(`Uploading base64 image for character ${c.name}...`);
+                const url = await uploadBase64ToFreeImage(c.image);
+                allCharacterImages.push(url);
+            } else {
+                allCharacterImages.push(c.image);
+            }
+        }
+        
+        console.log('Step 2: Generating images with nano-banana-2...');
         const generatedImages: string[] = [];
-        const allCharacterImages = characterList.map(c => c.image);
 
         for (let i = 0; i < 11; i++) {
             const pageDesc = pageDescriptions[i];
