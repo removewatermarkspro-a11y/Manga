@@ -74,25 +74,24 @@ async function fetchWithRetry(
 }
 
 // -------------------------------------------------------------------------------------------------
-// Upload base64 image to imgbb.com (free, reliable) and return a public URL
-// This is necessary because Kie's image_input ONLY accepts public HTTP URLs.
+// Upload base64 image to telegra.ph (Telegram CDN) and return a public URL.
+// No API key needed — free, reliable, works from Vercel.
 async function uploadBase64ToPublicUrl(base64Str: string): Promise<string> {
-    // Strip data URI prefix if present
     const rawB64 = base64Str.replace(/^data:image\/\w+;base64,/, '');
+    const buffer = Buffer.from(rawB64, 'base64');
 
-    // Try imgbb.com (free tier, 32MB/month, very reliable)
-    const imgbbKey = '44c4e51b3cb1cbc7aa2d89663bb6aa72'; // free API key
-    const formBody = new URLSearchParams();
-    formBody.append('key', imgbbKey);
-    formBody.append('image', rawB64);
+    console.log(`Uploading image to telegra.ph (${Math.round(buffer.length / 1024)}KB)...`);
 
-    console.log(`Uploading image to imgbb (${Math.round(rawB64.length / 1024)}KB base64)...`);
+    // Build multipart form with the image as a file
+    const blob = new Blob([new Uint8Array(buffer)], { type: 'image/jpeg' });
+    const formData = new FormData();
+    formData.append('file', blob, 'character.jpg');
 
     const res = await fetchWithRetry(
-        'https://api.imgbb.com/1/upload',
+        'https://telegra.ph/upload',
         {
             method: 'POST',
-            body: formBody,
+            body: formData,
         },
         3,
         20000
@@ -100,15 +99,18 @@ async function uploadBase64ToPublicUrl(base64Str: string): Promise<string> {
 
     if (!res.ok) {
         const text = await res.text().catch(() => 'no body');
-        throw new Error(`imgbb upload failed: HTTP ${res.status} — ${text.substring(0, 200)}`);
+        throw new Error(`Telegraph upload failed: HTTP ${res.status} — ${text.substring(0, 200)}`);
     }
 
     const data = await res.json();
-    if (data?.data?.url) {
-        console.log(`imgbb upload success: ${data.data.url}`);
-        return data.data.url;
+    // Response: [{"src": "/file/abcdef123.jpg"}]
+    if (Array.isArray(data) && data[0]?.src) {
+        const publicUrl = `https://telegra.ph${data[0].src}`;
+        console.log(`Telegraph upload success: ${publicUrl}`);
+        return publicUrl;
     }
-    throw new Error(`imgbb returned unexpected response: ${JSON.stringify(data).substring(0, 200)}`);
+    // Error response: {"error": "..."}  
+    throw new Error(`Telegraph upload failed: ${JSON.stringify(data).substring(0, 200)}`);
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -425,17 +427,24 @@ Keep each page description under 80 words. Be specific and visual.`;
 
         // ========================================================
         // STEP 3: Build 11 SHORT Kie prompts from the script
-        // Kie follows short prompts (< 60 words) much better
+        // Each prompt gets: style + scene + character reference instruction
         // ========================================================
+
+        // Detailed art style prefix — IDENTICAL for all 11 images to ensure consistency
+        const artStyle = style === 'manga'
+            ? 'Professional manga illustration, clean sharp black ink linework, detailed screentones and hatching, high contrast black and white, dynamic panel layout with gutters, expressive faces, speed lines for action'
+            : style === 'manhwa'
+            ? 'Professional manhwa webtoon illustration, polished digital coloring, soft cell-shading, vivid saturated colors, clean linework, beautiful detailed backgrounds, dynamic panel layout'
+            : 'Professional American comic book illustration, bold confident ink outlines, vibrant flat colors with halftone shading, dramatic lighting, dynamic panel layout with gutters';
+
         const kiePrompts: string[] = pageDescriptions.map((desc, i) => {
-            // Truncate LLaMA description to ~60 words max for Kie
             const words = desc.split(/\s+/);
-            const shortDesc = words.slice(0, 55).join(' ');
+            const shortDesc = words.slice(0, 50).join(' ');
 
             if (i === 0) {
-                return `${styleKeywords}. ${shortDesc}. Character from reference photo.`;
+                return `${artStyle}. Single cover illustration, no panels. ${shortDesc}. The character must look exactly like the person in the reference photo provided.`;
             } else {
-                return `${styleKeywords}, ${styleInstruction} page with panels. ${shortDesc}. Character from reference photo.`;
+                return `${artStyle}. Full comic page with multiple panels and speech bubbles. ${shortDesc}. The character must look exactly like the person in the reference photo provided.`;
             }
         });
 
@@ -443,7 +452,8 @@ Keep each page description under 80 words. Be specific and visual.`;
         const globalSeed = Math.floor(Math.random() * 999999);
 
         console.log(`Step 3: 11 Kie prompts built. Global seed: ${globalSeed}`);
-        kiePrompts.forEach((p, i) => console.log(`  Prompt ${i} (${p.length} chars): ${p.substring(0, 150)}...`));
+        console.log(`Art style: ${artStyle.substring(0, 80)}...`);
+        kiePrompts.forEach((p, i) => console.log(`  Prompt ${i} (${p.length} chars): ${p.substring(0, 180)}...`));
 
         // ========================================================
         // STEP 4: Stream images — PARALLEL batches of 3 to avoid 300s timeout
