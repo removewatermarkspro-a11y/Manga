@@ -115,11 +115,10 @@ async function uploadBase64ToPublicUrl(base64Str: string): Promise<string> {
 
 // -------------------------------------------------------------------------------------------------
 // Kie API helper for nano-banana-2
-// seed: pass the SAME seed across all pages for consistent art style
-async function generateImageWithKie(prompt: string, imageUrls: string[], seed?: number): Promise<string> {
+async function generateImageWithKie(prompt: string, imageUrls: string[]): Promise<string> {
     const KIE_API_KEY = "0ebb274e201da9dd3487833efa368f65";
 
-    console.log(`Kie createTask — prompt: ${prompt.length} chars, images: ${imageUrls.length}, seed: ${seed}`);
+    console.log(`Kie createTask — prompt: ${prompt.length} chars, images: ${imageUrls.length}`);
 
     const inputPayload: Record<string, any> = {
         prompt,
@@ -128,7 +127,6 @@ async function generateImageWithKie(prompt: string, imageUrls: string[], seed?: 
         output_format: "jpg"
     };
     if (imageUrls.length > 0) inputPayload.image_input = imageUrls;
-    if (seed !== undefined) inputPayload.seed = seed;
 
     const createRes = await fetchWithRetry(
         "https://api.kie.ai/api/v1/jobs/createTask",
@@ -324,33 +322,39 @@ export async function POST(req: Request) {
         const characterRoles = characterList.map(c => `${c.name} is the ${c.role}`).join('. ');
 
         // LLaMA writes a natural-language visual script — NOT JSON
-        const llamaSystemPrompt = `You are a ${styleInstruction} comic book artist describing exactly what to draw on each page. Write vivid, visual descriptions. Focus on what the reader SEES: characters, poses, expressions, backgrounds, lighting, and dialogue in speech bubbles. Do NOT write narrative or plot summaries — describe images.`;
+        const llamaSystemPrompt = `You are a ${styleInstruction} comic book artist. You describe exactly what to draw. Focus ONLY on visuals: characters, poses, expressions, backgrounds, lighting, dialogue in speech bubbles. Never write narrative or plot summaries.`;
 
         const llamaUserPrompt = `Write a visual script for an 11-page ${styleInstruction} comic book.
 
 STORY: "${storyText}"
 CHARACTERS: ${characterRoles}
 
-Write your script using this EXACT format (one description per page):
+FIRST, write a CHARACTER APPEARANCE section describing EACH character's physical look. This ensures they look the same on every page. Use this format:
+
+CHARACTER APPEARANCE:
+- ${characterList[0]?.name || 'Hero'}: [describe their hair color and style, skin tone, eye color, clothing they wear throughout the story, any distinctive features]
+${characterList.length > 1 ? `- ${characterList[1].name}: [same details]` : ''}
+
+THEN, write the script using this EXACT format:
 
 PAGE 0: [Cover page — single dramatic illustration of ${characterNames} with the title "${storyText}" in large stylized text. No panels.]
-PAGE 1: [Opening scene — introduce the characters and setting]
+PAGE 1: [Opening scene]
 PAGE 2: [Continue introduction]
-PAGE 3: [A problem or conflict appears]
+PAGE 3: [A problem or conflict]
 PAGE 4: [Tension grows]
-PAGE 5: [A twist or surprising turn]
-PAGE 6: [Characters react to the twist]
-PAGE 7: [The biggest challenge — climax begins]
-PAGE 8: [Peak action moment]
-PAGE 9: [Resolution — the conflict is resolved]
-PAGE 10: [Ending — final scene, characters at peace]
+PAGE 5: [A twist]
+PAGE 6: [Characters react]
+PAGE 7: [Climax begins]
+PAGE 8: [Peak action]
+PAGE 9: [Resolution]
+PAGE 10: [Ending]
 
-For each page, write 2-3 sentences describing:
-- The SETTING (where are we? what time of day? what's the atmosphere?)
-- The CHARACTERS (what are ${characterNames} doing? their pose? their face expression?)
-- The DIALOGUE (what do they say? write the exact speech bubble text in quotes)
+For each page, describe in 2-3 sentences:
+- The SETTING (location, time of day, atmosphere)
+- The CHARACTERS (pose, expression, what they're doing) — always use their names
+- The DIALOGUE (exact speech bubble text in quotes)
 
-Keep each page description under 80 words. Be specific and visual.`;
+IMPORTANT: Keep the SAME clothing and appearance for each character across ALL pages. Under 80 words per page.`;
 
         const llamaOutput = await replicate.run(
             "meta/meta-llama-3-70b-instruct",
@@ -403,14 +407,14 @@ Keep each page description under 80 words. Be specific and visual.`;
         // ========================================================
         // STEP 2: Upload character images to get public URLs
         // ========================================================
-        console.log('Step 2: Uploading character images to imgbb...');
+        console.log('Step 2: Uploading character images to telegra.ph...');
 
         const allCharacterImageUrls: string[] = [];
         for (let ci = 0; ci < characterList.length; ci++) {
             const c = characterList[ci];
             try {
                 if (c.image.startsWith('data:image') || c.image.startsWith('/9j/')) {
-                    console.log(`Uploading character ${ci + 1} (${c.name}) to imgbb...`);
+                    console.log(`Uploading character ${ci + 1} (${c.name}) to telegra.ph...`);
                     const publicUrl = await uploadBase64ToPublicUrl(c.image);
                     allCharacterImageUrls.push(publicUrl);
                 } else if (c.image.startsWith('http')) {
@@ -426,34 +430,48 @@ Keep each page description under 80 words. Be specific and visual.`;
         console.log(`Step 2 complete: ${allCharacterImageUrls.length} photo URL(s) ready.`);
 
         // ========================================================
-        // STEP 3: Build 11 SHORT Kie prompts from the script
-        // Each prompt gets: style + scene + character reference instruction
+        // STEP 3: Build 11 Kie prompts from the script
+        // Each prompt includes: art style + character appearance + scene + reference photo instruction
         // ========================================================
 
-        // Detailed art style prefix — IDENTICAL for all 11 images to ensure consistency
+        // Detailed art style prefix — IDENTICAL for all 11 images
         const artStyle = style === 'manga'
             ? 'Professional manga illustration, clean sharp black ink linework, detailed screentones and hatching, high contrast black and white, dynamic panel layout with gutters, expressive faces, speed lines for action'
             : style === 'manhwa'
             ? 'Professional manhwa webtoon illustration, polished digital coloring, soft cell-shading, vivid saturated colors, clean linework, beautiful detailed backgrounds, dynamic panel layout'
             : 'Professional American comic book illustration, bold confident ink outlines, vibrant flat colors with halftone shading, dramatic lighting, dynamic panel layout with gutters';
 
+        // Extract CHARACTER APPEARANCE description from LLaMA output (if present)
+        // This ensures each prompt has the exact same character look
+        let characterAppearance = '';
+        const appearanceMatch = llamaText.match(/CHARACTER APPEARANCE:([\s\S]*?)(?=PAGE 0:|$)/);
+        if (appearanceMatch) {
+            characterAppearance = appearanceMatch[1].trim();
+            console.log(`Character appearance extracted: ${characterAppearance.substring(0, 200)}`);
+        } else {
+            // Fallback: basic description
+            characterAppearance = characterList.map(c => `${c.name} (${c.role})`).join(', ');
+            console.log('No CHARACTER APPEARANCE section found in LLaMA output, using fallback.');
+        }
+
         const kiePrompts: string[] = pageDescriptions.map((desc, i) => {
             const words = desc.split(/\s+/);
             const shortDesc = words.slice(0, 50).join(' ');
 
+            // Character consistency block — repeated in EVERY prompt
+            const charBlock = `Characters: ${characterAppearance}. The characters must look EXACTLY like the people in the reference photos provided — same face, same hair, same skin tone.`;
+
             if (i === 0) {
-                return `${artStyle}. Single cover illustration, no panels. ${shortDesc}. The character must look exactly like the person in the reference photo provided.`;
+                return `${artStyle}. Single cover illustration, no panels. ${shortDesc}. ${charBlock}`;
             } else {
-                return `${artStyle}. Full comic page with multiple panels and speech bubbles. ${shortDesc}. The character must look exactly like the person in the reference photo provided.`;
+                return `${artStyle}. Full comic page with multiple panels and speech bubbles. ${shortDesc}. ${charBlock}`;
             }
         });
 
-        // Use one fixed seed for ALL images → same art style, colors, character design
-        const globalSeed = Math.floor(Math.random() * 999999);
-
-        console.log(`Step 3: 11 Kie prompts built. Global seed: ${globalSeed}`);
+        console.log(`Step 3: 11 Kie prompts built.`);
         console.log(`Art style: ${artStyle.substring(0, 80)}...`);
-        kiePrompts.forEach((p, i) => console.log(`  Prompt ${i} (${p.length} chars): ${p.substring(0, 180)}...`));
+        console.log(`Character block: ${characterAppearance.substring(0, 120)}...`);
+        kiePrompts.forEach((p, i) => console.log(`  Prompt ${i} (${p.length} chars): ${p.substring(0, 200)}...`));
 
         // ========================================================
         // STEP 4: Stream images — PARALLEL batches of 3 to avoid 300s timeout
@@ -490,7 +508,7 @@ Keep each page description under 80 words. Be specific and visual.`;
                         const batchPromises = [];
                         for (let i = start; i < end; i++) {
                             batchPromises.push(
-                                generateImageWithKie(kiePrompts[i], allCharacterImageUrls, globalSeed)
+                                generateImageWithKie(kiePrompts[i], allCharacterImageUrls)
                                     .then(url => ({ index: i, url, error: null as string | null }))
                                     .catch(err => ({ index: i, url: null as string | null, error: err.message as string }))
                             );
