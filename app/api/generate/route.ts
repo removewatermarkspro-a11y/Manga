@@ -82,16 +82,31 @@ async function uploadBase64ToPublicUrl(base64Str: string): Promise<string> {
 
     console.log(`Uploading image to telegra.ph (${Math.round(buffer.length / 1024)}KB)...`);
 
-    // Build multipart form with the image as a file
-    const blob = new Blob([new Uint8Array(buffer)], { type: 'image/jpeg' });
-    const formData = new FormData();
-    formData.append('file', blob, 'character.jpg');
+    const boundary = '----WebKitFormBoundary' + Math.random().toString(36).substring(2);
+    
+    // Build multipart/form-data manually with native Uint8Array to avoid Node FormData quirks
+    const prefixStr = `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="character.jpg"\r\nContent-Type: image/jpeg\r\n\r\n`;
+    const suffixStr = `\r\n--${boundary}--\r\n`;
+    
+    const prefix = new TextEncoder().encode(prefixStr);
+    const bodyData = new Uint8Array(buffer);
+    const suffix = new TextEncoder().encode(suffixStr);
+    
+    const totalLength = prefix.length + bodyData.length + suffix.length;
+    const body = new Uint8Array(totalLength);
+    body.set(prefix, 0);
+    body.set(bodyData, prefix.length);
+    body.set(suffix, prefix.length + bodyData.length);
 
     const res = await fetchWithRetry(
         'https://telegra.ph/upload',
         {
             method: 'POST',
-            body: formData,
+            headers: {
+                'Content-Type': `multipart/form-data; boundary=${boundary}`,
+                'Accept': 'application/json'
+            },
+            body: body,
         },
         3,
         20000
@@ -126,7 +141,12 @@ async function generateImageWithKie(prompt: string, imageUrls: string[]): Promis
         resolution: "1K",
         output_format: "jpg"
     };
-    if (imageUrls.length > 0) inputPayload.image_input = imageUrls;
+    if (imageUrls.length > 0) {
+        inputPayload.images = imageUrls.map(url => ({ url })); // Standard Fal.ai format
+        inputPayload.image_url = imageUrls[0]; // Fallback for some models
+        inputPayload.image_urls = imageUrls; // Alternate array format
+        inputPayload.image_input = imageUrls; // Keep original just in case and to avoid breaking
+    }
 
     const createRes = await fetchWithRetry(
         "https://api.kie.ai/api/v1/jobs/createTask",
