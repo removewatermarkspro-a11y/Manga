@@ -340,20 +340,19 @@ export async function POST(req: Request) {
         const characterRoles = characterList.map(c => `${c.name} is the ${c.role}`).join('. ');
 
         // LLaMA writes a natural-language visual script — NOT JSON
-        const llamaSystemPrompt = `You are a ${styleInstruction} comic book artist. You describe exactly what to draw. Focus ONLY on visuals: characters, poses, expressions, backgrounds, lighting, dialogue in speech bubbles. Never write narrative or plot summaries.`;
+        // IMPORTANT: Do NOT ask LLaMA to describe character physical appearance.
+        // The user uploads selfies, and GPT-image-2 will use those reference photos.
+        // If LLaMA invents appearances (e.g. "brown hair, blue eyes"), it OVERRIDES the photos.
+        const llamaSystemPrompt = `You are a ${styleInstruction} comic book artist. You describe exactly what to draw: scenes, poses, expressions, backgrounds, lighting, dialogue in speech bubbles. NEVER describe character physical appearance (hair color, eye color, skin tone, body type) — reference photos are provided separately. Only use character names.`;
 
         const llamaUserPrompt = `Write a visual script for an 11-page ${styleInstruction} comic book.
 
 STORY: "${storyText}"
 CHARACTERS: ${characterRoles}
 
-FIRST, write a CHARACTER APPEARANCE section describing EACH character's physical look. This ensures they look the same on every page. Use this format:
+IMPORTANT RULE: Do NOT describe any character's physical appearance (no hair color, eye color, skin tone, height, clothing description). Reference photos will be provided separately. Just use the character names.
 
-CHARACTER APPEARANCE:
-- ${characterList[0]?.name || 'Hero'}: [describe their hair color and style, skin tone, eye color, clothing they wear throughout the story, any distinctive features]
-${characterList.length > 1 ? `- ${characterList[1].name}: [same details]` : ''}
-
-THEN, write the script using this EXACT format:
+Write the script using this EXACT format:
 
 PAGE 0: [Cover page — single dramatic illustration of ${characterNames} with the title "${storyText}" in large stylized text. No panels.]
 PAGE 1: [Opening scene]
@@ -369,10 +368,10 @@ PAGE 10: [Ending]
 
 For each page, describe in 2-3 sentences:
 - The SETTING (location, time of day, atmosphere)
-- The CHARACTERS (pose, expression, what they're doing) — always use their names
+- The CHARACTERS (pose, expression, what they're doing) — use their names, NOT physical descriptions
 - The DIALOGUE (exact speech bubble text in quotes)
 
-IMPORTANT: Keep the SAME clothing and appearance for each character across ALL pages. Under 80 words per page.`;
+IMPORTANT: Under 80 words per page. Never mention hair color, eye color, skin tone, or clothing.`;
 
         const llamaOutput = await replicate.run(
             "meta/meta-llama-3-70b-instruct",
@@ -459,25 +458,20 @@ IMPORTANT: Keep the SAME clothing and appearance for each character across ALL p
             ? 'Professional manhwa webtoon illustration, polished digital coloring, soft cell-shading, vivid saturated colors, clean linework, beautiful detailed backgrounds, dynamic panel layout'
             : 'Professional American comic book illustration, bold confident ink outlines, vibrant flat colors with halftone shading, dramatic lighting, dynamic panel layout with gutters';
 
-        // Extract CHARACTER APPEARANCE description from LLaMA output (if present)
-        // This ensures each prompt has the exact same character look
-        let characterAppearance = '';
-        const appearanceMatch = llamaText.match(/CHARACTER APPEARANCE:([\s\S]*?)(?=PAGE 0:|$)/);
-        if (appearanceMatch) {
-            characterAppearance = appearanceMatch[1].trim();
-            console.log(`Character appearance extracted: ${characterAppearance.substring(0, 200)}`);
-        } else {
-            // Fallback: basic description
-            characterAppearance = characterList.map(c => `${c.name} (${c.role})`).join(', ');
-            console.log('No CHARACTER APPEARANCE section found in LLaMA output, using fallback.');
-        }
+        // DO NOT extract or use LLaMA's invented character appearance.
+        // The user's uploaded selfies (passed as input_urls to KIE) are the ONLY source of truth
+        // for character appearance. Any text description of looks would OVERRIDE the photos.
+
+        // Build character name/role list (NO physical descriptions)
+        const characterNamesRoles = characterList.map(c => `${c.name} (${c.role})`).join(', ');
 
         const kiePrompts: string[] = pageDescriptions.map((desc, i) => {
             const words = desc.split(/\s+/);
             const shortDesc = words.slice(0, 50).join(' ');
 
-            // Character consistency block — repeated in EVERY prompt
-            const charBlock = `Characters: ${characterAppearance}. Use the face and physical appearance from the reference photos provided as input. The character must have the EXACT same face, facial features, skin tone, and hair as shown in the input photos. This is a photo-to-illustration transformation — preserve the person's identity.`;
+            // Photo-first character block — NO invented physical descriptions
+            // This tells GPT-image-2 to use the input_urls reference photos as the ground truth
+            const charBlock = `Characters: ${characterNamesRoles}. CRITICAL: The characters MUST look EXACTLY like the people in the reference input photos. Copy their exact face, facial features, skin tone, hair color, hair style, and body type from the photos. This is a photo-to-${styleInstruction} transformation — the illustrated characters must be clearly recognizable as the same people from the input photos. Do NOT invent or change any physical features.`;
 
             if (i === 0) {
                 return `${artStyle}. Single cover illustration, no panels. ${shortDesc}. ${charBlock}`;
@@ -488,13 +482,13 @@ IMPORTANT: Keep the SAME clothing and appearance for each character across ALL p
 
         console.log(`Step 3: 11 Kie prompts built.`);
         console.log(`Art style: ${artStyle.substring(0, 80)}...`);
-        console.log(`Character block: ${characterAppearance.substring(0, 120)}...`);
+        console.log(`Character names/roles: ${characterNamesRoles}`);
         kiePrompts.forEach((p, i) => console.log(`  Prompt ${i} (${p.length} chars): ${p.substring(0, 200)}...`));
 
         // ========================================================
-        // STEP 4: Stream images — PARALLEL batches of 3 to avoid 300s timeout
-        // Sequential: 11 × 30s = 330s (TIMEOUT)
-        // Parallel (3): 4 batches × 30s = 120s (OK)
+        // STEP 4: Stream images — PARALLEL batches of 6 to avoid 300s timeout
+        // Batches of 3 caused 504 timeouts on Vercel.
+        // Parallel (6): 2 batches × ~50s = ~100s (safe)
         // ========================================================
         console.log('Step 4: Generating images in parallel batches...');
 
@@ -514,7 +508,7 @@ IMPORTANT: Keep the SAME clothing and appearance for each character across ALL p
                 const generatedImages: (string | null)[] = new Array(11).fill(null);
 
                 try {
-                    const BATCH_SIZE = 3;
+                    const BATCH_SIZE = 6;
                     const totalBatches = Math.ceil(11 / BATCH_SIZE);
 
                     for (let batch = 0; batch < totalBatches; batch++) {
