@@ -74,183 +74,36 @@ async function fetchWithRetry(
 }
 
 // -------------------------------------------------------------------------------------------------
-// Build a multipart/form-data body manually (no Node FormData quirks on Vercel)
-function buildMultipartBody(boundary: string, fields: { name: string; value: string }[], file: { name: string; filename: string; contentType: string; data: Uint8Array }): Uint8Array {
-    let textParts = '';
-    for (const f of fields) {
-        textParts += `--${boundary}\r\nContent-Disposition: form-data; name="${f.name}"\r\n\r\n${f.value}\r\n`;
-    }
-    const filePrefixStr = `--${boundary}\r\nContent-Disposition: form-data; name="${file.name}"; filename="${file.filename}"\r\nContent-Type: ${file.contentType}\r\n\r\n`;
-    const suffixStr = `\r\n--${boundary}--\r\n`;
-    const prefix = new TextEncoder().encode(textParts + filePrefixStr);
-    const suffix = new TextEncoder().encode(suffixStr);
-    const body = new Uint8Array(prefix.length + file.data.length + suffix.length);
-    body.set(prefix, 0);
-    body.set(file.data, prefix.length);
-    body.set(suffix, prefix.length + file.data.length);
-    return body;
-}
+// Generate an image using Replicate's openai/gpt-image-2
+// input_images accepts data URIs directly — no external CDN upload needed!
+async function generateImageWithGpt(
+    replicateClient: Replicate,
+    prompt: string,
+    characterDataUrls: string[]
+): Promise<string> {
+    console.log(`GPT-image-2 via Replicate — prompt: ${prompt.length} chars, input_images: ${characterDataUrls.length}`);
 
-// Upload via catbox.moe (primary — reliable, no API key, permanent hosting)
-async function uploadToCatbox(buffer: Buffer): Promise<string> {
-    const boundary = '----CatboxBoundary' + Math.random().toString(36).substring(2);
-    const body = buildMultipartBody(
-        boundary,
-        [{ name: 'reqtype', value: 'fileupload' }],
-        { name: 'fileToUpload', filename: 'character.jpg', contentType: 'image/jpeg', data: new Uint8Array(buffer) }
-    );
-    const res = await fetchWithRetry('https://catbox.moe/user/api.php', {
-        method: 'POST',
-        headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
-        body,
-    }, 2, 15000);
-    const text = await res.text();
-    const url = text.trim();
-    if (!url.startsWith('https://')) throw new Error(`Catbox upload failed: ${url.substring(0, 200)}`);
-    return url;
-}
-
-// Upload via telegra.ph (fallback)
-async function uploadToTelegraph(buffer: Buffer): Promise<string> {
-    const boundary = '----WebKitFormBoundary' + Math.random().toString(36).substring(2);
-    const body = buildMultipartBody(
-        boundary, [],
-        { name: 'file', filename: 'character.jpg', contentType: 'image/jpeg', data: new Uint8Array(buffer) }
-    );
-    const res = await fetchWithRetry('https://telegra.ph/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}`, 'Accept': 'application/json' },
-        body,
-    }, 2, 15000);
-    if (!res.ok) throw new Error(`Telegraph HTTP ${res.status}`);
-    const data = await res.json();
-    if (Array.isArray(data) && data[0]?.src) return `https://telegra.ph${data[0].src}`;
-    throw new Error(`Telegraph failed: ${JSON.stringify(data).substring(0, 200)}`);
-}
-
-// Upload base64 image → public URL (catbox.moe primary, telegra.ph fallback)
-async function uploadBase64ToPublicUrl(base64Str: string): Promise<string> {
-    const rawB64 = base64Str.replace(/^data:image\/\w+;base64,/, '');
-    const buffer = Buffer.from(rawB64, 'base64');
-    console.log(`Uploading image (${Math.round(buffer.length / 1024)}KB)...`);
-
-    // Try catbox.moe first (most reliable)
-    try {
-        const url = await uploadToCatbox(buffer);
-        console.log(`Catbox upload success: ${url}`);
-        return url;
-    } catch (e: any) {
-        console.warn(`Catbox failed: ${e.message}, trying telegra.ph...`);
-    }
-
-    // Fallback: telegra.ph
-    try {
-        const url = await uploadToTelegraph(buffer);
-        console.log(`Telegraph upload success: ${url}`);
-        return url;
-    } catch (e: any) {
-        console.error(`Telegraph also failed: ${e.message}`);
-    }
-
-    throw new Error('All image upload services failed (catbox + telegraph)');
-}
-
-// -------------------------------------------------------------------------------------------------
-// Kie API helper for nano-banana-2
-async function generateImageWithKie(prompt: string, imageUrls: string[]): Promise<string> {
-    const KIE_API_KEY = "0ebb274e201da9dd3487833efa368f65";
-
-    console.log(`Kie createTask (gpt-image-2-image-to-image) — prompt: ${prompt.length} chars, images: ${imageUrls.length}`);
-    console.log(`  input_urls: ${JSON.stringify(imageUrls)}`);
-
-    const inputPayload: Record<string, any> = {
+    const input: Record<string, any> = {
         prompt,
-        aspect_ratio: "3:4",
-        resolution: "1K",
+        aspect_ratio: "2:3",
+        quality: "medium",
+        output_format: "webp",
+        number_of_images: 1,
+        moderation: "low",
     };
-    if (imageUrls.length > 0) {
-        // GPT Image 2 image-to-image expects input_urls as an array of public image URLs.
-        // This ensures the model uses the reference photos (faces, appearance) in the output.
-        inputPayload.input_urls = imageUrls;
+
+    if (characterDataUrls.length > 0) {
+        input.input_images = characterDataUrls;
     }
 
-    const createRes = await fetchWithRetry(
-        "https://api.kie.ai/api/v1/jobs/createTask",
-        {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${KIE_API_KEY}`
-            },
-            body: JSON.stringify({
-                model: "gpt-image-2-image-to-image",
-                input: inputPayload
-            })
-        },
-        3,
-        30000
-    );
+    const output = await replicateClient.run("openai/gpt-image-2", { input });
 
-    if (!createRes.ok) {
-        let errMessage = 'Create Task failed';
-        try { errMessage = JSON.stringify(await createRes.json()); } catch (_) {}
-        throw new Error(`Kie API Create Error: ${createRes.status} — ${errMessage}`);
+    if (Array.isArray(output) && output.length > 0 && typeof output[0] === 'string') {
+        console.log(`GPT-image-2 result: ${(output[0] as string).substring(0, 80)}...`);
+        return output[0] as string;
     }
 
-    const createData = await createRes.json();
-    if (createData.code !== 200 || !createData.data?.taskId) {
-        throw new Error(`Kie API Create Error: ${JSON.stringify(createData)}`);
-    }
-
-    const taskId = createData.data.taskId;
-    console.log(`Kie task created: ${taskId}`);
-
-    // 2. Poll Task Status (with retry on each poll, max 120 polls à 3s = 6 min)
-    for (let poll = 0; poll < 120; poll++) {
-        await new Promise(resolve => setTimeout(resolve, 3000));
-
-        let pollRes: Response;
-        try {
-            pollRes = await fetchWithRetry(
-                `https://api.kie.ai/api/v1/jobs/recordInfo?taskId=${taskId}`,
-                {
-                    method: "GET",
-                    headers: { "Authorization": `Bearer ${KIE_API_KEY}` }
-                },
-                3,
-                15000
-            );
-        } catch (pollErr) {
-            console.warn(`Poll ${poll + 1} failed, continuing...`);
-            continue;
-        }
-
-        if (!pollRes.ok) {
-            console.warn(`Poll ${poll + 1}: HTTP ${pollRes.status}, continuing...`);
-            continue;
-        }
-
-        const pollData = await pollRes.json();
-
-        if (pollData.code === 200 && pollData.data) {
-            const state = pollData.data.state;
-            console.log(`Poll ${poll + 1}: state = ${state}`);
-
-            if (state === "success") {
-                try {
-                    const resultJson = JSON.parse(pollData.data.resultJson);
-                    return resultJson.resultUrls[0];
-                } catch (e) {
-                    throw new Error(`Failed to parse result URL: ${pollData.data.resultJson}`);
-                }
-            } else if (state === "fail") {
-                throw new Error(`Kie task failed: ${pollData.data.failMsg}`);
-            }
-            // state === "waiting" or "running" — keep polling
-        }
-    }
-
-    throw new Error('Kie task timed out after 6 minutes');
+    throw new Error(`GPT-image-2: unexpected output: ${JSON.stringify(output).substring(0, 200)}`);
 }
 
 export async function POST(req: Request) {
@@ -448,50 +301,47 @@ IMPORTANT: Under 80 words per page. Never mention hair color, eye color, skin to
         console.log(`Step 1 complete: ${pageDescriptions.length} page descriptions parsed from script.`);
 
         // ========================================================
-        // STEP 2: Upload character images to get public URLs
+        // STEP 2: Collect character images as data URIs
+        // Replicate's openai/gpt-image-2 accepts data URIs natively in input_images
+        // No external CDN upload needed!
         // ========================================================
-        console.log('Step 2: Uploading character images to telegra.ph...');
+        console.log('Step 2: Collecting character image data URIs...');
 
-        const allCharacterImageUrls: string[] = [];
-        for (let ci = 0; ci < characterList.length; ci++) {
-            const c = characterList[ci];
-            try {
-                if (c.image.startsWith('data:image') || c.image.startsWith('/9j/')) {
-                    console.log(`Uploading character ${ci + 1} (${c.name}) to telegra.ph...`);
-                    const publicUrl = await uploadBase64ToPublicUrl(c.image);
-                    allCharacterImageUrls.push(publicUrl);
-                } else if (c.image.startsWith('http')) {
-                    allCharacterImageUrls.push(c.image);
-                } else {
-                    console.warn(`Character ${c.name}: unknown image format, skipping`);
-                }
-            } catch (uploadErr: any) {
-                console.error(`Failed to upload image for ${c.name}: ${uploadErr.message}`);
+        const characterDataUrls: string[] = [];
+        for (const c of characterList) {
+            if (c.image && (c.image.startsWith('data:image') || c.image.startsWith('/9j/'))) {
+                // Ensure proper data URI format
+                const dataUrl = c.image.startsWith('data:') ? c.image : `data:image/jpeg;base64,${c.image}`;
+                characterDataUrls.push(dataUrl);
+                console.log(`Character ${c.name}: data URI ready (${Math.round(dataUrl.length / 1024)}KB)`);
+            } else if (c.image && c.image.startsWith('http')) {
+                characterDataUrls.push(c.image);
+                console.log(`Character ${c.name}: URL ready`);
+            } else {
+                console.warn(`Character ${c.name}: no valid image, skipping`);
             }
         }
 
-        console.log(`Step 2 complete: ${allCharacterImageUrls.length} photo URL(s) ready.`);
+        console.log(`Step 2 complete: ${characterDataUrls.length} character image(s) ready for GPT-image-2.`);
 
         // ========================================================
-        // STEP 3: Build Kie prompts from the script
-        // Each prompt includes: art style + scene + reference photo instruction
+        // STEP 3: Build GPT-image-2 prompts from the script
         // ========================================================
 
-        // Detailed art style prefix — IDENTICAL for all 11 images
+        // Detailed art style prefix — IDENTICAL for all pages
         const artStyle = style === 'manga'
             ? 'Professional manga illustration, clean sharp black ink linework, detailed screentones and hatching, high contrast black and white, dynamic panel layout with gutters, expressive faces, speed lines for action'
             : style === 'manhwa'
             ? 'Professional manhwa webtoon illustration, polished digital coloring, soft cell-shading, vivid saturated colors, clean linework, beautiful detailed backgrounds, dynamic panel layout'
             : 'Professional American comic book illustration, bold confident ink outlines, vibrant flat colors with halftone shading, dramatic lighting, dynamic panel layout with gutters';
 
-        // DO NOT extract or use LLaMA's invented character appearance.
-        // The user's uploaded selfies (passed as input_urls to KIE) are the ONLY source of truth
-        // for character appearance. Any text description of looks would OVERRIDE the photos.
+        // The user's uploaded selfies are passed as input_images to GPT-image-2
+        // The prompt tells the model to use those photos as reference
 
         // Build character name/role list (NO physical descriptions)
         const characterNamesRoles = characterList.map(c => `${c.name} (${c.role})`).join(', ');
 
-        const kiePrompts: string[] = pageDescriptions.map((desc, i) => {
+        const imagePrompts: string[] = pageDescriptions.map((desc, i) => {
             const words = desc.split(/\s+/);
             const shortDesc = words.slice(0, 50).join(' ');
 
@@ -506,15 +356,15 @@ IMPORTANT: Under 80 words per page. Never mention hair color, eye color, skin to
             }
         });
 
-        console.log(`Step 3: ${TOTAL_PAGES} Kie prompts built.`);
+        console.log(`Step 3: ${TOTAL_PAGES} GPT-image-2 prompts built.`);
         console.log(`Art style: ${artStyle.substring(0, 80)}...`);
         console.log(`Character names/roles: ${characterNamesRoles}`);
-        console.log(`Character image URLs for KIE: ${JSON.stringify(allCharacterImageUrls)}`);
-        kiePrompts.forEach((p, i) => console.log(`  Prompt ${i} (${p.length} chars): ${p.substring(0, 200)}...`));
+        console.log(`Character images count: ${characterDataUrls.length}`);
+        imagePrompts.forEach((p, i) => console.log(`  Prompt ${i} (${p.length} chars): ${p.substring(0, 200)}...`));
 
         // ========================================================
-        // STEP 4: Generate ALL pages in a SINGLE parallel batch
-        // 6 pages in parallel — completes in ~40-60s (fits Vercel Hobby 60s)
+        // STEP 4: Generate ALL pages in parallel via Replicate GPT-image-2
+        // replicate.run() handles polling internally — much simpler than KIE
         // ========================================================
         console.log('Step 4: Generating images in parallel batches...');
 
@@ -539,14 +389,14 @@ IMPORTANT: Under 80 words per page. Never mention hair color, eye color, skin to
 
                     for (let batch = 0; batch < totalBatches; batch++) {
                         const start = batch * BATCH_SIZE;
-                        const end = Math.min(start + BATCH_SIZE, 11);
+                        const end = Math.min(start + BATCH_SIZE, TOTAL_PAGES);
                         console.log(`\n--- Batch ${batch + 1}/${totalBatches}: pages ${start}-${end - 1} ---`);
 
                         // Launch all pages in this batch in PARALLEL
                         const batchPromises = [];
                         for (let i = start; i < end; i++) {
                             batchPromises.push(
-                                generateImageWithKie(kiePrompts[i], allCharacterImageUrls)
+                                generateImageWithGpt(replicate, imagePrompts[i], characterDataUrls)
                                     .then(url => ({ index: i, url, error: null as string | null }))
                                     .catch(err => ({ index: i, url: null as string | null, error: err.message as string }))
                             );
@@ -582,7 +432,7 @@ IMPORTANT: Under 80 words per page. Never mention hair color, eye color, skin to
                         await _supabase.from('profiles').update({ credits: _profile.credits - 1 }).eq('id', _user.id);
                     }
 
-                    console.log(`Generation complete! ${successCount}/11 images generated.`);
+                    console.log(`Generation complete! ${successCount}/${TOTAL_PAGES} images generated.`);
                     encode({ type: 'done', creationId: _creationId });
 
                 } catch (err: any) {
