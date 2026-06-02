@@ -403,6 +403,11 @@ IMPORTANT: Under 80 words per page. Never mention hair color, eye color, skin to
                     controller.enqueue(new TextEncoder().encode(line));
                 };
 
+                // Keep connection alive with heartbeat every 10 seconds
+                const heartbeat = setInterval(() => {
+                    controller.enqueue(new TextEncoder().encode(': heartbeat\n\n'));
+                }, 10000);
+
                 const generatedImages: (string | null)[] = new Array(TOTAL_PAGES).fill(null);
 
                 try {
@@ -414,37 +419,31 @@ IMPORTANT: Under 80 words per page. Never mention hair color, eye color, skin to
                         const end = Math.min(start + BATCH_SIZE, TOTAL_PAGES);
                         console.log(`\n--- Batch ${batch + 1}/${totalBatches}: pages ${start}-${end - 1} ---`);
 
-                        // Launch all pages in this batch in PARALLEL
+                        // Launch all pages in this batch in PARALLEL and stream immediately
                         const batchPromises = [];
                         for (let i = start; i < end; i++) {
-                            batchPromises.push(
-                                generateImageWithGpt(replicate, imagePrompts[i], characterDataUrls)
-                                    .then(url => ({ index: i, url, error: null as string | null }))
-                                    .catch(err => ({ index: i, url: null as string | null, error: err.message as string }))
-                            );
+                            const p = generateImageWithGpt(replicate, imagePrompts[i], characterDataUrls)
+                                .then(async url => {
+                                    console.log(`Page ${i === 0 ? 'COVER' : i} done: ${url.substring(0, 60)}...`);
+                                    generatedImages[i] = url;
+                                    encode({ type: 'image', url, page: i });
+
+                                    if (!_isTesting && _creationId) {
+                                        await _supabase.from('creation_pages').insert({
+                                            creation_id: _creationId,
+                                            page_number: i,
+                                            image_url: url,
+                                        });
+                                    }
+                                })
+                                .catch(err => {
+                                    console.error(`Page ${i} FAILED: ${err.message}`);
+                                    encode({ type: 'error', page: i, message: err.message });
+                                });
+                            batchPromises.push(p);
                         }
 
-                        const results = await Promise.all(batchPromises);
-
-                        // Stream results to client (ordered by page)
-                        for (const r of results.sort((a, b) => a.index - b.index)) {
-                            if (r.url) {
-                                console.log(`Page ${r.index === 0 ? 'COVER' : r.index} done: ${r.url.substring(0, 60)}...`);
-                                generatedImages[r.index] = r.url;
-                                encode({ type: 'image', url: r.url, page: r.index });
-
-                                if (!_isTesting && _creationId) {
-                                    await _supabase.from('creation_pages').insert({
-                                        creation_id: _creationId,
-                                        page_number: r.index,
-                                        image_url: r.url,
-                                    });
-                                }
-                            } else {
-                                console.error(`Page ${r.index} FAILED: ${r.error}`);
-                                encode({ type: 'error', page: r.index, message: r.error });
-                            }
-                        }
+                        await Promise.all(batchPromises);
                     }
 
                     // Finalize
@@ -461,6 +460,7 @@ IMPORTANT: Under 80 words per page. Never mention hair color, eye color, skin to
                     console.error('Streaming generation error:', err);
                     encode({ type: 'error', message: err.message || 'Generation failed' });
                 } finally {
+                    clearInterval(heartbeat);
                     controller.close();
                 }
             }
