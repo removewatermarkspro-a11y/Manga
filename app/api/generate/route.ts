@@ -133,19 +133,17 @@ async function uploadBase64ToPublicUrl(base64Str: string): Promise<string> {
 async function generateImageWithKie(prompt: string, imageUrls: string[]): Promise<string> {
     const KIE_API_KEY = "0ebb274e201da9dd3487833efa368f65";
 
-    console.log(`Kie createTask — prompt: ${prompt.length} chars, images: ${imageUrls.length}`);
+    console.log(`Kie createTask (gpt-image-2-image-to-image) — prompt: ${prompt.length} chars, images: ${imageUrls.length}`);
 
     const inputPayload: Record<string, any> = {
         prompt,
         aspect_ratio: "3:4",
         resolution: "1K",
-        output_format: "jpg"
     };
     if (imageUrls.length > 0) {
-        inputPayload.images = imageUrls.map(url => ({ url })); // Standard Fal.ai format
-        inputPayload.image_url = imageUrls[0]; // Fallback for some models
-        inputPayload.image_urls = imageUrls; // Alternate array format
-        inputPayload.image_input = imageUrls; // Keep original just in case and to avoid breaking
+        // GPT Image 2 image-to-image expects input_urls as an array of public image URLs.
+        // This ensures the model uses the reference photos (faces, appearance) in the output.
+        inputPayload.input_urls = imageUrls;
     }
 
     const createRes = await fetchWithRetry(
@@ -157,7 +155,7 @@ async function generateImageWithKie(prompt: string, imageUrls: string[]): Promis
                 "Authorization": `Bearer ${KIE_API_KEY}`
             },
             body: JSON.stringify({
-                model: "nano-banana-2",
+                model: "gpt-image-2-image-to-image",
                 input: inputPayload
             })
         },
@@ -479,7 +477,7 @@ IMPORTANT: Keep the SAME clothing and appearance for each character across ALL p
             const shortDesc = words.slice(0, 50).join(' ');
 
             // Character consistency block — repeated in EVERY prompt
-            const charBlock = `Characters: ${characterAppearance}. The characters must look EXACTLY like the people in the reference photos provided — same face, same hair, same skin tone.`;
+            const charBlock = `Characters: ${characterAppearance}. Use the face and physical appearance from the reference photos provided as input. The character must have the EXACT same face, facial features, skin tone, and hair as shown in the input photos. This is a photo-to-illustration transformation — preserve the person's identity.`;
 
             if (i === 0) {
                 return `${artStyle}. Single cover illustration, no panels. ${shortDesc}. ${charBlock}`;
