@@ -128,7 +128,7 @@ export default function PricingPage() {
             if (contentType.includes('text/event-stream')) {
                 const reader = res.body.getReader();
                 const decoder = new TextDecoder();
-                const collectedImages: string[] = [];
+                const collectedImagesArray: { url: string; page: number }[] = [];
                 let buffer = '';
                 let creationId: string | null = null;
 
@@ -148,11 +148,12 @@ export default function PricingPage() {
                         try {
                             const event = JSON.parse(payload);
                             if (event.type === 'image') {
-                                collectedImages.push(event.url);
+                                collectedImagesArray.push({ url: event.url, page: event.page });
                             } else if (event.type === 'done') {
                                 creationId = event.creationId || null;
                             } else if (event.type === 'error') {
-                                throw new Error(event.message);
+                                // Don't throw on individual page errors, we want the rest of the comic
+                                console.error(`Error generating page ${event.page}: ${event.message}`);
                             }
                         } catch (parseErr) {
                             // ignore malformed SSE lines
@@ -160,11 +161,15 @@ export default function PricingPage() {
                     }
                 }
 
-                if (collectedImages.length === 0) {
+                if (collectedImagesArray.length === 0) {
                     throw new Error('No images were generated');
                 }
 
-                localStorage.setItem('generatedImages', JSON.stringify(collectedImages));
+                // Sort the array to ensure pages are in sequential order (0 to 10)
+                collectedImagesArray.sort((a, b) => a.page - b.page);
+                const finalOrderedUrls = collectedImagesArray.map(item => item.url);
+
+                localStorage.setItem('generatedImages', JSON.stringify(finalOrderedUrls));
                 localStorage.removeItem('pendingGenerationData');
                 window.location.href = creationId ? `/results?id=${creationId}` : '/results';
 
