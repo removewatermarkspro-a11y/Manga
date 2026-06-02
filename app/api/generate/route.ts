@@ -74,58 +74,85 @@ async function fetchWithRetry(
 }
 
 // -------------------------------------------------------------------------------------------------
-// Upload base64 image to telegra.ph (Telegram CDN) and return a public URL.
-// No API key needed — free, reliable, works from Vercel.
+// Build a multipart/form-data body manually (no Node FormData quirks on Vercel)
+function buildMultipartBody(boundary: string, fields: { name: string; value: string }[], file: { name: string; filename: string; contentType: string; data: Uint8Array }): Uint8Array {
+    let textParts = '';
+    for (const f of fields) {
+        textParts += `--${boundary}\r\nContent-Disposition: form-data; name="${f.name}"\r\n\r\n${f.value}\r\n`;
+    }
+    const filePrefixStr = `--${boundary}\r\nContent-Disposition: form-data; name="${file.name}"; filename="${file.filename}"\r\nContent-Type: ${file.contentType}\r\n\r\n`;
+    const suffixStr = `\r\n--${boundary}--\r\n`;
+    const prefix = new TextEncoder().encode(textParts + filePrefixStr);
+    const suffix = new TextEncoder().encode(suffixStr);
+    const body = new Uint8Array(prefix.length + file.data.length + suffix.length);
+    body.set(prefix, 0);
+    body.set(file.data, prefix.length);
+    body.set(suffix, prefix.length + file.data.length);
+    return body;
+}
+
+// Upload via catbox.moe (primary — reliable, no API key, permanent hosting)
+async function uploadToCatbox(buffer: Buffer): Promise<string> {
+    const boundary = '----CatboxBoundary' + Math.random().toString(36).substring(2);
+    const body = buildMultipartBody(
+        boundary,
+        [{ name: 'reqtype', value: 'fileupload' }],
+        { name: 'fileToUpload', filename: 'character.jpg', contentType: 'image/jpeg', data: new Uint8Array(buffer) }
+    );
+    const res = await fetchWithRetry('https://catbox.moe/user/api.php', {
+        method: 'POST',
+        headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
+        body,
+    }, 2, 15000);
+    const text = await res.text();
+    const url = text.trim();
+    if (!url.startsWith('https://')) throw new Error(`Catbox upload failed: ${url.substring(0, 200)}`);
+    return url;
+}
+
+// Upload via telegra.ph (fallback)
+async function uploadToTelegraph(buffer: Buffer): Promise<string> {
+    const boundary = '----WebKitFormBoundary' + Math.random().toString(36).substring(2);
+    const body = buildMultipartBody(
+        boundary, [],
+        { name: 'file', filename: 'character.jpg', contentType: 'image/jpeg', data: new Uint8Array(buffer) }
+    );
+    const res = await fetchWithRetry('https://telegra.ph/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}`, 'Accept': 'application/json' },
+        body,
+    }, 2, 15000);
+    if (!res.ok) throw new Error(`Telegraph HTTP ${res.status}`);
+    const data = await res.json();
+    if (Array.isArray(data) && data[0]?.src) return `https://telegra.ph${data[0].src}`;
+    throw new Error(`Telegraph failed: ${JSON.stringify(data).substring(0, 200)}`);
+}
+
+// Upload base64 image → public URL (catbox.moe primary, telegra.ph fallback)
 async function uploadBase64ToPublicUrl(base64Str: string): Promise<string> {
     const rawB64 = base64Str.replace(/^data:image\/\w+;base64,/, '');
     const buffer = Buffer.from(rawB64, 'base64');
+    console.log(`Uploading image (${Math.round(buffer.length / 1024)}KB)...`);
 
-    console.log(`Uploading image to telegra.ph (${Math.round(buffer.length / 1024)}KB)...`);
-
-    const boundary = '----WebKitFormBoundary' + Math.random().toString(36).substring(2);
-    
-    // Build multipart/form-data manually with native Uint8Array to avoid Node FormData quirks
-    const prefixStr = `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="character.jpg"\r\nContent-Type: image/jpeg\r\n\r\n`;
-    const suffixStr = `\r\n--${boundary}--\r\n`;
-    
-    const prefix = new TextEncoder().encode(prefixStr);
-    const bodyData = new Uint8Array(buffer);
-    const suffix = new TextEncoder().encode(suffixStr);
-    
-    const totalLength = prefix.length + bodyData.length + suffix.length;
-    const body = new Uint8Array(totalLength);
-    body.set(prefix, 0);
-    body.set(bodyData, prefix.length);
-    body.set(suffix, prefix.length + bodyData.length);
-
-    const res = await fetchWithRetry(
-        'https://telegra.ph/upload',
-        {
-            method: 'POST',
-            headers: {
-                'Content-Type': `multipart/form-data; boundary=${boundary}`,
-                'Accept': 'application/json'
-            },
-            body: body,
-        },
-        3,
-        20000
-    );
-
-    if (!res.ok) {
-        const text = await res.text().catch(() => 'no body');
-        throw new Error(`Telegraph upload failed: HTTP ${res.status} — ${text.substring(0, 200)}`);
+    // Try catbox.moe first (most reliable)
+    try {
+        const url = await uploadToCatbox(buffer);
+        console.log(`Catbox upload success: ${url}`);
+        return url;
+    } catch (e: any) {
+        console.warn(`Catbox failed: ${e.message}, trying telegra.ph...`);
     }
 
-    const data = await res.json();
-    // Response: [{"src": "/file/abcdef123.jpg"}]
-    if (Array.isArray(data) && data[0]?.src) {
-        const publicUrl = `https://telegra.ph${data[0].src}`;
-        console.log(`Telegraph upload success: ${publicUrl}`);
-        return publicUrl;
+    // Fallback: telegra.ph
+    try {
+        const url = await uploadToTelegraph(buffer);
+        console.log(`Telegraph upload success: ${url}`);
+        return url;
+    } catch (e: any) {
+        console.error(`Telegraph also failed: ${e.message}`);
     }
-    // Error response: {"error": "..."}  
-    throw new Error(`Telegraph upload failed: ${JSON.stringify(data).substring(0, 200)}`);
+
+    throw new Error('All image upload services failed (catbox + telegraph)');
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -134,6 +161,7 @@ async function generateImageWithKie(prompt: string, imageUrls: string[]): Promis
     const KIE_API_KEY = "0ebb274e201da9dd3487833efa368f65";
 
     console.log(`Kie createTask (gpt-image-2-image-to-image) — prompt: ${prompt.length} chars, images: ${imageUrls.length}`);
+    console.log(`  input_urls: ${JSON.stringify(imageUrls)}`);
 
     const inputPayload: Record<string, any> = {
         prompt,
@@ -345,7 +373,10 @@ export async function POST(req: Request) {
         // If LLaMA invents appearances (e.g. "brown hair, blue eyes"), it OVERRIDES the photos.
         const llamaSystemPrompt = `You are a ${styleInstruction} comic book artist. You describe exactly what to draw: scenes, poses, expressions, backgrounds, lighting, dialogue in speech bubbles. NEVER describe character physical appearance (hair color, eye color, skin tone, body type) — reference photos are provided separately. Only use character names.`;
 
-        const llamaUserPrompt = `Write a visual script for an 11-page ${styleInstruction} comic book.
+        // 6 pages total (cover + 5) to fit within Vercel Hobby 60s timeout
+        const TOTAL_PAGES = 6;
+
+        const llamaUserPrompt = `Write a visual script for a 6-page ${styleInstruction} comic book.
 
 STORY: "${storyText}"
 CHARACTERS: ${characterRoles}
@@ -355,16 +386,11 @@ IMPORTANT RULE: Do NOT describe any character's physical appearance (no hair col
 Write the script using this EXACT format:
 
 PAGE 0: [Cover page — single dramatic illustration of ${characterNames} with the title "${storyText}" in large stylized text. No panels.]
-PAGE 1: [Opening scene]
-PAGE 2: [Continue introduction]
-PAGE 3: [A problem or conflict]
-PAGE 4: [Tension grows]
-PAGE 5: [A twist]
-PAGE 6: [Characters react]
-PAGE 7: [Climax begins]
-PAGE 8: [Peak action]
-PAGE 9: [Resolution]
-PAGE 10: [Ending]
+PAGE 1: [Opening scene — introduce characters and setting]
+PAGE 2: [Conflict — a problem or challenge appears]
+PAGE 3: [Climax — peak action and tension]
+PAGE 4: [Resolution — the conflict is resolved]
+PAGE 5: [Ending — emotional conclusion]
 
 For each page, describe in 2-3 sentences:
 - The SETTING (location, time of day, atmosphere)
@@ -399,9 +425,9 @@ IMPORTANT: Under 80 words per page. Never mention hair color, eye color, skin to
 
         // Parse the script by splitting on "PAGE X:" markers
         const pageDescriptions: string[] = [];
-        for (let p = 0; p <= 10; p++) {
+        for (let p = 0; p < TOTAL_PAGES; p++) {
             const marker = `PAGE ${p}:`;
-            const nextMarker = p < 10 ? `PAGE ${p + 1}:` : null;
+            const nextMarker = p < TOTAL_PAGES - 1 ? `PAGE ${p + 1}:` : null;
             const startIdx = llamaText.indexOf(marker);
 
             if (startIdx !== -1) {
@@ -447,8 +473,8 @@ IMPORTANT: Under 80 words per page. Never mention hair color, eye color, skin to
         console.log(`Step 2 complete: ${allCharacterImageUrls.length} photo URL(s) ready.`);
 
         // ========================================================
-        // STEP 3: Build 11 Kie prompts from the script
-        // Each prompt includes: art style + character appearance + scene + reference photo instruction
+        // STEP 3: Build Kie prompts from the script
+        // Each prompt includes: art style + scene + reference photo instruction
         // ========================================================
 
         // Detailed art style prefix — IDENTICAL for all 11 images
@@ -480,15 +506,15 @@ IMPORTANT: Under 80 words per page. Never mention hair color, eye color, skin to
             }
         });
 
-        console.log(`Step 3: 11 Kie prompts built.`);
+        console.log(`Step 3: ${TOTAL_PAGES} Kie prompts built.`);
         console.log(`Art style: ${artStyle.substring(0, 80)}...`);
         console.log(`Character names/roles: ${characterNamesRoles}`);
+        console.log(`Character image URLs for KIE: ${JSON.stringify(allCharacterImageUrls)}`);
         kiePrompts.forEach((p, i) => console.log(`  Prompt ${i} (${p.length} chars): ${p.substring(0, 200)}...`));
 
         // ========================================================
-        // STEP 4: Stream images — PARALLEL batches of 6 to avoid 300s timeout
-        // Batches of 3 caused 504 timeouts on Vercel.
-        // Parallel (6): 2 batches × ~50s = ~100s (safe)
+        // STEP 4: Generate ALL pages in a SINGLE parallel batch
+        // 6 pages in parallel — completes in ~40-60s (fits Vercel Hobby 60s)
         // ========================================================
         console.log('Step 4: Generating images in parallel batches...');
 
@@ -505,11 +531,11 @@ IMPORTANT: Under 80 words per page. Never mention hair color, eye color, skin to
                     controller.enqueue(new TextEncoder().encode(line));
                 };
 
-                const generatedImages: (string | null)[] = new Array(11).fill(null);
+                const generatedImages: (string | null)[] = new Array(TOTAL_PAGES).fill(null);
 
                 try {
-                    const BATCH_SIZE = 6;
-                    const totalBatches = Math.ceil(11 / BATCH_SIZE);
+                    const BATCH_SIZE = TOTAL_PAGES; // All pages in one batch
+                    const totalBatches = Math.ceil(TOTAL_PAGES / BATCH_SIZE);
 
                     for (let batch = 0; batch < totalBatches; batch++) {
                         const start = batch * BATCH_SIZE;
