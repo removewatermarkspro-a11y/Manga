@@ -79,7 +79,8 @@ async function fetchWithRetry(
 async function generateImageWithGpt(
     replicateClient: Replicate,
     prompt: string,
-    characterDataUrls: string[]
+    characterDataUrls: string[],
+    retries = 2
 ): Promise<string> {
     console.log(`GPT-image-2 via Replicate — prompt: ${prompt.length} chars, input_images: ${characterDataUrls.length}`);
 
@@ -96,14 +97,30 @@ async function generateImageWithGpt(
         input.input_images = characterDataUrls;
     }
 
-    const output = await replicateClient.run("openai/gpt-image-2", { input });
-
-    if (Array.isArray(output) && output.length > 0 && typeof output[0] === 'string') {
-        console.log(`GPT-image-2 result: ${(output[0] as string).substring(0, 80)}...`);
-        return output[0] as string;
+    let lastError = null;
+    for (let attempt = 1; attempt <= retries + 1; attempt++) {
+        try {
+            const output = await replicateClient.run("openai/gpt-image-2", { input });
+            
+            if (Array.isArray(output) && output.length > 0 && typeof output[0] === 'string') {
+                console.log(`GPT-image-2 result (attempt ${attempt}): ${(output[0] as string).substring(0, 80)}...`);
+                return output[0] as string;
+            }
+            throw new Error(`Unexpected output format: ${JSON.stringify(output).substring(0, 200)}`);
+            
+        } catch (err: any) {
+            lastError = err;
+            console.warn(`GPT-image-2 attempt ${attempt} failed: ${err.message}`);
+            if (attempt <= retries && err.message.includes('unavailable')) {
+                console.log(`Waiting 2s before retry...`);
+                await new Promise(r => setTimeout(r, 2000));
+            } else if (attempt > retries) {
+                break;
+            }
+        }
     }
 
-    throw new Error(`GPT-image-2: unexpected output: ${JSON.stringify(output).substring(0, 200)}`);
+    throw new Error(`GPT-image-2 failed after ${retries + 1} attempts. Last error: ${lastError?.message}`);
 }
 
 export async function POST(req: Request) {
@@ -226,10 +243,10 @@ export async function POST(req: Request) {
         // If LLaMA invents appearances (e.g. "brown hair, blue eyes"), it OVERRIDES the photos.
         const llamaSystemPrompt = `You are a ${styleInstruction} comic book artist. You describe exactly what to draw: scenes, poses, expressions, backgrounds, lighting, dialogue in speech bubbles. NEVER describe character physical appearance (hair color, eye color, skin tone, body type) — reference photos are provided separately. Only use character names.`;
 
-        // 6 pages total (cover + 5) to fit within Vercel Hobby 60s timeout
-        const TOTAL_PAGES = 6;
+        // 11 pages total (cover + 10)
+        const TOTAL_PAGES = 11;
 
-        const llamaUserPrompt = `Write a visual script for a 6-page ${styleInstruction} comic book.
+        const llamaUserPrompt = `Write a visual script for an 11-page ${styleInstruction} comic book.
 
 STORY: "${storyText}"
 CHARACTERS: ${characterRoles}
@@ -239,11 +256,16 @@ IMPORTANT RULE: Do NOT describe any character's physical appearance (no hair col
 Write the script using this EXACT format:
 
 PAGE 0: [Cover page — single dramatic illustration of ${characterNames} with the title "${storyText}" in large stylized text. No panels.]
-PAGE 1: [Opening scene — introduce characters and setting]
-PAGE 2: [Conflict — a problem or challenge appears]
-PAGE 3: [Climax — peak action and tension]
-PAGE 4: [Resolution — the conflict is resolved]
-PAGE 5: [Ending — emotional conclusion]
+PAGE 1: [Opening scene]
+PAGE 2: [Continue introduction]
+PAGE 3: [A problem or conflict]
+PAGE 4: [Tension grows]
+PAGE 5: [A twist]
+PAGE 6: [Characters react]
+PAGE 7: [Climax begins]
+PAGE 8: [Peak action]
+PAGE 9: [Resolution]
+PAGE 10: [Ending]
 
 For each page, describe in 2-3 sentences:
 - The SETTING (location, time of day, atmosphere)
